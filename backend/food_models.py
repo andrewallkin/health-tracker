@@ -24,6 +24,7 @@ class MacrosG(BaseModel):
 class FoodEstimateRaw(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    name: str = Field(min_length=1, max_length=255)
     label_energy: LabelEnergy | None
     calories_kcal: float | None
     macros_g: MacrosG
@@ -54,6 +55,7 @@ class EnergyRaw(BaseModel):
 class FoodEstimate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    name: str = Field(min_length=1, max_length=255)
     label_energy: LabelEnergy | None
     calories_kcal: int
     macros_g: MacrosG
@@ -106,6 +108,7 @@ def normalize_food_estimate(raw: FoodEstimateRaw, *, kj_factor: float) -> FoodEs
             calories_kcal = round(total)
             energy_raw = EnergyRaw(value=total, unit="kcal")
         return FoodEstimate(
+            name=raw.name.strip(),
             label_energy=label_energy,
             calories_kcal=calories_kcal,
             macros_g=raw.macros_g,
@@ -118,6 +121,7 @@ def normalize_food_estimate(raw: FoodEstimateRaw, *, kj_factor: float) -> FoodEs
 
     assert raw.calories_kcal is not None
     return FoodEstimate(
+        name=raw.name.strip(),
         label_energy=None,
         calories_kcal=round(raw.calories_kcal),
         macros_g=raw.macros_g,

@@ -1,4 +1,6 @@
-import { aggregateWeek, calorieHeatLevel } from "../../../lib/aggregates";
+import { useEffect, useMemo, useState } from "react";
+import { aggregateWeek, calorieHeatLevel, groupEntriesByDate } from "../../../lib/aggregates";
+import { fetchEntriesInRange } from "../../../lib/api";
 import {
   addWeeks,
   formatWeekRange,
@@ -8,7 +10,7 @@ import {
 } from "../../../lib/dates";
 import { PAGE_SHELL } from "../../../lib/layout";
 import { isFutureDate } from "../../../lib/logLabels";
-import type { DailyGoal } from "../../../types/nutrition";
+import type { DailyGoal, LogEntry } from "../../../types/nutrition";
 import { DateNav } from "../../layout/DateNav";
 
 interface WeekViewProps {
@@ -27,7 +29,29 @@ export function WeekView({
   onOpenSettings,
 }: WeekViewProps) {
   const { start, end, dates } = getWeekRange(anchorDate);
-  const summary = aggregateWeek(dates, goal);
+  const [entriesByDate, setEntriesByDate] = useState<Map<string, LogEntry[]>>(new Map());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchEntriesInRange(start, end)
+      .then((entries) => {
+        if (!cancelled) setEntriesByDate(groupEntriesByDate(entries));
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [start, end]);
+
+  const summary = useMemo(
+    () => aggregateWeek(dates, goal, entriesByDate),
+    [dates, goal, entriesByDate],
+  );
   const maxCalories = Math.max(goal.calories, ...summary.days.map((d) => d.consumed.calories), 1);
 
   return (
@@ -49,6 +73,10 @@ export function WeekView({
         }
       />
 
+      {loading ? (
+        <p className="py-8 text-center text-sm text-zinc-500">Loading week…</p>
+      ) : (
+        <>
       <div className="mb-5 grid grid-cols-4 gap-2 rounded-2xl border border-white/10 bg-surface-elevated/80 p-4">
         <Stat label="Avg kcal" value={summary.averages.calories} accent="text-amber-400" />
         <Stat label="Avg P" value={`${summary.averages.protein}g`} accent="text-protein" />
@@ -132,6 +160,8 @@ export function WeekView({
           Dashed line = {goal.calories} kcal goal · tap a day to open
         </p>
       </div>
+        </>
+      )}
     </div>
   );
 }

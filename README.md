@@ -6,24 +6,52 @@ Personal health and nutrition tooling: Garmin Connect exploration, OpenAI food e
 
 | Folder | Description |
 |--------|-------------|
-| [`backend/`](backend/) | Food estimation modules (`MacrosEstimator`) — staging for upcoming FastAPI |
+| [`backend/`](backend/) | FastAPI app, SQLite persistence, and `MacrosEstimator` |
 | [`frontend/`](frontend/) | Nutrition & health dashboard (Vite + React + TypeScript) |
 | [`notebooks/`](notebooks/) | Jupyter notebooks for Garmin API and food vision demos |
-| [`scripts/`](scripts/) | Standalone utility scripts (Garmin Connect demo) |
-| [`tests/fixtures/`](tests/fixtures/) | Test input images for notebooks and future integration tests |
+| [`scripts/`](scripts/) | Utility scripts (Garmin demo, DB seeding) |
+| [`tests/fixtures/`](tests/fixtures/) | Test input images for notebooks and integration tests |
 | [`docs/`](docs/) | Product specs and roadmap |
 
 ## Quick start
 
-### Python
+### Backend + database
+
+Using [uv](https://docs.astral.sh/uv/) (recommended):
+
+```bash
+uv sync
+cp .env.example .env
+```
+
+Or with pip:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # add OPENAI_API_KEY
-pytest backend/tests
+cp .env.example .env
 ```
+
+Generate an encryption key and add it to `.env`:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Seed the SQLite database with dummy nutrition data:
+
+```bash
+uv run python scripts/seed_db.py --reset
+```
+
+Run the API (from repo root):
+
+```bash
+uv run uvicorn backend.main:app --reload --port 8000
+```
+
+Add your OpenAI API key and model choices in the app **Settings** screen (stored encrypted in SQLite).
 
 ### Frontend
 
@@ -33,7 +61,13 @@ npm install
 npm run dev
 ```
 
-Open the URL shown in the terminal (typically `http://localhost:5173`).
+Open `http://localhost:5173`. Vite proxies `/api` to the backend on port 8000.
+
+### Tests
+
+```bash
+uv run pytest backend/tests
+```
 
 ## Notebooks
 

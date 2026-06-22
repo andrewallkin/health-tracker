@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from ...database import get_db
+from ...db_models import LogEntryRow
+from ..mappers import log_entry_to_schema
+from ..schemas import LogEntry, LogEntryCreate, LogEntryUpdate
+
+router = APIRouter(prefix="/entries", tags=["entries"])
+
+
+@router.get("", response_model=list[LogEntry])
+def list_entries(
+    date: str | None = Query(default=None, alias="date"),
+    from_date: str | None = Query(default=None, alias="from"),
+    to_date: str | None = Query(default=None, alias="to"),
+    db: Session = Depends(get_db),
+) -> list[LogEntry]:
+    query = db.query(LogEntryRow)
+
+    if date:
+        query = query.filter(LogEntryRow.log_date == date)
+    elif from_date and to_date:
+        query = query.filter(
+            LogEntryRow.log_date >= from_date,
+            LogEntryRow.log_date <= to_date,
+        )
+    elif from_date or to_date:
+        raise HTTPException(status_code=400, detail="Provide both 'from' and 'to' for date ranges")
+
+    rows = query.order_by(LogEntryRow.log_date, LogEntryRow.time).all()
+    return [log_entry_to_schema(row) for row in rows]
+
+
+@router.post("", response_model=LogEntry, status_code=201)
+def create_entry(payload: LogEntryCreate, db: Session = Depends(get_db)) -> LogEntry:
+    row = LogEntryRow(
+        id=str(uuid.uuid4()),
+        log_date=payload.logDate,
+        slot=payload.slot,
+        time=payload.time,
+        name=payload.name.strip(),
+        servings=payload.servings,
+        calories=payload.calories,
+        protein=payload.protein,
+        carbs=payload.carbs,
+        fat=payload.fat,
+        saved_meal_id=payload.savedMealId,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return log_entry_to_schema(row)
+
+
+@router.patch("/{entry_id}", response_model=LogEntry)
+def update_entry(
+    entry_id: str,
+    payload: LogEntryUpdate,
+    db: Session = Depends(get_db),
+) -> LogEntry:
+    row = db.get(LogEntryRow, entry_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    field_map = {
+        "name": "name",
+        "slot": "slot",
+        "time": "time",
+        "servings": "servings",
+        "calories": "calories",
+        "protein": "protein",
+        "carbs": "carbs",
+        "fat": "fat",
+        "savedMealId": "saved_meal_id",
+    }
+    for api_field, orm_field in field_map.items():
+        if api_field in updates:
+            value = updates[api_field]
+            if api_field == "name" and isinstance(value, str):
+                value = value.strip()
+            setattr(row, orm_field, value)
+
+    db.commit()
+    db.refresh(row)
+    return log_entry_to_schema(row)
+
+
+@router.delete("/{entry_id}", status_code=204)
+def delete_entry(entry_id: str, db: Session = Depends(get_db)) -> None:
+    row = db.get(LogEntryRow, entry_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    db.delete(row)
+    db.commit()

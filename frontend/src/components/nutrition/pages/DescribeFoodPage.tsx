@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { mockEstimateFood } from "../../../lib/mockEstimator";
-import type { DescribeFoodInput } from "../../../types/foodEstimate";
+import { estimateFood } from "../../../lib/api";
+import type { DescribeFoodInput, FoodEstimate } from "../../../types/foodEstimate";
 import { MealPhotoPicker } from "../shared/MealPhotoPicker";
 import { PageShell } from "../../layout/PageShell";
 
 interface DescribeFoodPageProps {
   initialInput?: DescribeFoodInput;
   onBack: () => void;
-  onEstimated: (input: DescribeFoodInput, estimate: Awaited<ReturnType<typeof mockEstimateFood>>) => void;
+  onEstimated: (input: DescribeFoodInput, estimate: FoodEstimate) => void;
 }
 
 export function DescribeFoodPage({ initialInput, onBack, onEstimated }: DescribeFoodPageProps) {
@@ -29,10 +29,10 @@ export function DescribeFoodPage({ initialInput, onBack, onEstimated }: Describe
     setIsEstimating(true);
     setError(null);
     try {
-      const estimate = await mockEstimateFood(input);
+      const estimate = await estimateFood(input);
       onEstimated(input, estimate);
-    } catch {
-      setError("Could not generate an estimate. Try again.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not generate an estimate. Try again.");
     } finally {
       setIsEstimating(false);
     }
@@ -41,40 +41,42 @@ export function DescribeFoodPage({ initialInput, onBack, onEstimated }: Describe
   return (
     <PageShell
       title="Describe or photo"
-      subtitle="Mock AI estimate — no backend yet"
+      subtitle="AI calorie and macro estimate"
       onBack={onBack}
       footer={
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center bg-gradient-to-t from-surface via-surface/90 to-transparent px-4 pb-6 pt-10">
           <button
             type="button"
             disabled={!canEstimate || isEstimating}
-            onClick={() => void handleEstimate()}
-            className="pointer-events-auto w-full max-w-[448px] rounded-full bg-green-500 py-3.5 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/30 transition hover:bg-green-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={handleEstimate}
+            className="pointer-events-auto w-full max-w-[448px] rounded-full bg-amber-500 py-3.5 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/30 transition hover:bg-amber-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isEstimating ? "Estimating…" : "Estimate macros"}
+            {isEstimating ? "Estimating…" : "Estimate"}
           </button>
         </div>
       }
     >
       <div className="space-y-5 pb-28">
+        {error && (
+          <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+            {error}
+          </p>
+        )}
+
+        <MealPhotoPicker imageUrl={photoUrl} onChange={setPhotoUrl} />
+
         <label className="block">
-          <span className="mb-1.5 block text-xs font-medium text-zinc-500">Description</span>
+          <span className="mb-1.5 block text-xs font-medium text-zinc-500">
+            Description (optional if you added a photo)
+          </span>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="e.g. Sweet potato chilli mince, one bowl. Or: ate 2 servings from label (420 kJ per serving)…"
             rows={4}
-            className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-white/20 focus:bg-white/8"
+            placeholder="e.g. sweet potato chilli mince, one bowl"
+            className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-white/20 focus:bg-white/8"
           />
         </label>
-
-        <MealPhotoPicker
-          label="Photo or label (optional)"
-          imageUrl={photoUrl}
-          onChange={setPhotoUrl}
-        />
-
-        {error && <p className="text-sm text-rose-400">{error}</p>}
       </div>
     </PageShell>
   );

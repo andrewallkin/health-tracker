@@ -20,6 +20,7 @@ export interface SavedMeal {
 
 export interface LogEntry {
   id: string;
+  logDate?: string;
   name: string;
   slot: MealSlot;
   time: string;

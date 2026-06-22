@@ -17,6 +17,7 @@ from food_models import (
 
 def _raw_label_kj() -> FoodEstimateRaw:
     return FoodEstimateRaw(
+        name="Greek yogurt",
         label_energy=LabelEnergy(
             per_serving=418.4,
             unit="kJ",
@@ -33,6 +34,7 @@ def _raw_label_kj() -> FoodEstimateRaw:
 
 def _raw_label_kcal() -> FoodEstimateRaw:
     return FoodEstimateRaw(
+        name="Protein bar",
         label_energy=LabelEnergy(
             per_serving=250,
             unit="kcal",
@@ -49,6 +51,7 @@ def _raw_label_kcal() -> FoodEstimateRaw:
 
 def _raw_estimate() -> FoodEstimateRaw:
     return FoodEstimateRaw(
+        name="Chicken rice bowl",
         label_energy=None,
         calories_kcal=650.4,
         macros_g=MacrosG(protein=40, carbs=50, fat=20),
@@ -76,6 +79,7 @@ def test_normalize_label_kcal() -> None:
 
 def test_normalize_estimate_clears_label_energy() -> None:
     result = normalize_food_estimate(_raw_estimate(), kj_factor=4.184)
+    assert result.name == "Chicken rice bowl"
     assert result.label_energy is None
     assert result.calories_kcal == 650
     assert result.energy_raw is None
@@ -84,6 +88,7 @@ def test_normalize_estimate_clears_label_energy() -> None:
 def test_raw_label_missing_label_energy_raises() -> None:
     with pytest.raises(ValidationError):
         FoodEstimateRaw(
+            name="Missing label data",
             label_energy=None,
             calories_kcal=None,
             macros_g=MacrosG(protein=1, carbs=1, fat=1),
@@ -97,6 +102,7 @@ def test_raw_label_missing_label_energy_raises() -> None:
 def test_raw_estimate_missing_calories_raises() -> None:
     with pytest.raises(ValidationError):
         FoodEstimateRaw(
+            name="Missing calories",
             label_energy=None,
             calories_kcal=None,
             macros_g=MacrosG(protein=1, carbs=1, fat=1),
@@ -131,6 +137,8 @@ def test_food_estimate_schema_has_required_fields() -> None:
     from food_models import FOOD_ESTIMATE_SCHEMA
 
     assert FOOD_ESTIMATE_SCHEMA["additionalProperties"] is False
+    assert "name" in FOOD_ESTIMATE_SCHEMA["properties"]
+    assert "name" in FOOD_ESTIMATE_SCHEMA["required"]
     assert "macros_g" in FOOD_ESTIMATE_SCHEMA["properties"]
     assert "source" in FOOD_ESTIMATE_SCHEMA["required"]
     assert "$ref" not in json.dumps(FOOD_ESTIMATE_SCHEMA)

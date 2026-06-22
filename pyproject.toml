@@ -1,0 +1,26 @@
+[project]
+name = "health-tracker"
+version = "0.1.0"
+description = "Personal health and nutrition tracker"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openai",
+    "python-dotenv",
+    "pillow",
+    "pillow-heif",
+    "pydantic",
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy",
+    "cryptography",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "httpx",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]

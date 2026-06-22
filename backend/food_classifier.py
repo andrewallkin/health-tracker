@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from PIL import Image, ImageOps
 
-from food_models import (
+from .food_models import (
     FOOD_ESTIMATE_SCHEMA,
     EstimateInput,
     EstimateUsage,
@@ -49,6 +49,8 @@ Rules:
 3. macros_g values are grams (protein, carbs, fat) for everything consumed.
 4. List every guess in assumptions. Leave assumptions empty for clear label reads.
 5. Keep summary to one short sentence explaining the calculation or estimate.
+6. Set name to a short, human-readable meal title (max 48 characters) based on the note
+   and/or what you see in the photos. Do not include serving sizes or calorie counts.
 """
 
 MULTI_PHOTO_HINT = (
@@ -65,6 +67,7 @@ class MacrosEstimator:
         self,
         *,
         client: OpenAI | None = None,
+        api_key: str | None = None,
         text_model: str | None = None,
         image_model: str | None = None,
         kj_to_kcal_factor: float = 4.184,
@@ -76,13 +79,13 @@ class MacrosEstimator:
         if load_env:
             load_dotenv()
 
-        api_key = os.environ.get("OPENAI_API_KEY")
+        resolved_key = (api_key or os.environ.get("OPENAI_API_KEY") or "").strip() or None
         if client is None:
-            if not api_key:
+            if not resolved_key:
                 raise ValueError(
-                    "OPENAI_API_KEY is not set. Pass client= or set the environment variable."
+                    "OpenAI API key is not set. Pass api_key=, client=, or set OPENAI_API_KEY."
                 )
-            client = OpenAI(api_key=api_key, max_retries=max_retries)
+            client = OpenAI(api_key=resolved_key, max_retries=max_retries)
         self.client = client
 
         legacy_model = (os.environ.get("OPENAI_FOOD_MODEL") or "").strip() or None
@@ -101,16 +104,19 @@ class MacrosEstimator:
         self.max_image_edge = max_image_edge
         self.jpeg_quality = jpeg_quality
 
-    def _prepare_image_for_api(self, path: Path) -> tuple[bytes, str]:
-        suffix = path.suffix.lower()
-        if suffix not in SUPPORTED_IMAGE_SUFFIXES:
-            supported = ", ".join(sorted(SUPPORTED_IMAGE_SUFFIXES))
-            raise ValueError(
-                f"Unsupported image format {path.suffix!r} for {path.name}. "
-                f"Supported: {supported}"
-            )
+    @staticmethod
+    def _is_data_url(value: str) -> bool:
+        return value.startswith("data:")
 
-        with Image.open(path) as img:
+    @staticmethod
+    def _decode_data_url(value: str) -> bytes:
+        if "," not in value:
+            raise ValueError("Invalid data URL: missing comma separator")
+        _, encoded = value.split(",", 1)
+        return base64.standard_b64decode(encoded)
+
+    def _resize_image_bytes(self, data: bytes) -> tuple[bytes, str]:
+        with Image.open(BytesIO(data)) as img:
             img = ImageOps.exif_transpose(img).convert("RGB")
             width, height = img.size
             longest = max(width, height)
@@ -122,19 +128,38 @@ class MacrosEstimator:
             img.save(buf, format="JPEG", quality=self.jpeg_quality)
             return buf.getvalue(), "image/jpeg"
 
-    def _encode_image(self, path: Path) -> dict[str, Any]:
-        data, mime = self._prepare_image_for_api(path)
+    def _prepare_image_for_api(self, path: Path) -> tuple[bytes, str]:
+        suffix = path.suffix.lower()
+        if suffix not in SUPPORTED_IMAGE_SUFFIXES:
+            supported = ", ".join(sorted(SUPPORTED_IMAGE_SUFFIXES))
+            raise ValueError(
+                f"Unsupported image format {path.suffix!r} for {path.name}. "
+                f"Supported: {supported}"
+            )
+
+        with open(path, "rb") as f:
+            return self._resize_image_bytes(f.read())
+
+    def _encode_photo(self, photo: str | Path) -> dict[str, Any]:
+        if isinstance(photo, str) and self._is_data_url(photo):
+            data, mime = self._resize_image_bytes(self._decode_data_url(photo))
+        else:
+            path = Path(photo)
+            if not path.is_file():
+                raise FileNotFoundError(path)
+            data, mime = self._prepare_image_for_api(path)
+
         encoded = base64.standard_b64encode(data).decode("ascii")
         return {
             "type": "image_url",
             "image_url": {"url": f"data:{mime};base64,{encoded}"},
         }
 
-    def _encode_images(self, paths: list[Path]) -> list[dict[str, Any]]:
-        if len(paths) <= 1:
-            return [self._encode_image(path) for path in paths]
-        with ThreadPoolExecutor(max_workers=len(paths)) as executor:
-            return list(executor.map(self._encode_image, paths))
+    def _encode_images(self, photos: list[str | Path]) -> list[dict[str, Any]]:
+        if len(photos) <= 1:
+            return [self._encode_photo(photo) for photo in photos]
+        with ThreadPoolExecutor(max_workers=len(photos)) as executor:
+            return list(executor.map(self._encode_photo, photos))
 
     def estimate_macros(
         self,
@@ -142,20 +167,16 @@ class MacrosEstimator:
         note: str | None = None,
         photos: list[str | Path] | None = None,
     ) -> FoodEstimateResult:
-        """Estimate calories and macros from a note and/or local image paths."""
+        """Estimate calories and macros from a note and/or image paths or data URLs."""
         note = (note or "").strip() or None
-        photo_paths = [Path(p) for p in (photos or [])]
+        photo_inputs = list(photos or [])
 
-        if not note and not photo_paths:
+        if not note and not photo_inputs:
             raise ValueError("Provide at least one of note or photos")
-
-        for path in photo_paths:
-            if not path.is_file():
-                raise FileNotFoundError(path)
 
         estimate_input = EstimateInput(
             note=note,
-            photos=[str(p) for p in photo_paths],
+            photos=[str(p) for p in photo_inputs],
         )
 
         user_content: list[dict[str, Any]] = []
@@ -163,20 +184,20 @@ class MacrosEstimator:
 
         if note:
             user_text_parts.append(f"Note: {note}")
-        if len(photo_paths) > 1:
+        if len(photo_inputs) > 1:
             user_text_parts.append(MULTI_PHOTO_HINT)
 
         model = select_food_model(
-            has_photos=bool(photo_paths),
+            has_photos=bool(photo_inputs),
             text_model=self.text_model,
             image_model=self.image_model,
         )
 
         if user_text_parts:
             user_content.append({"type": "text", "text": "\n".join(user_text_parts)})
-        user_content.extend(self._encode_images(photo_paths))
+        user_content.extend(self._encode_images(photo_inputs))
 
-        logger.info("Calling OpenAI model=%s photos=%d", model, len(photo_paths))
+        logger.info("Calling OpenAI model=%s photos=%d", model, len(photo_inputs))
 
         try:
             response = self.client.chat.completions.create(

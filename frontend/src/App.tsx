@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
 import { dailyGoal } from "./data/mock";
+import {
+  createLogEntry,
+  createSavedMeal,
+  deleteLogEntry,
+  fetchEntriesForDate,
+  fetchGoals,
+  fetchSavedMeals,
+  updateAiSettings,
+  updateGoals,
+  updateLogEntry,
+} from "./lib/api";
 import { toDateKey } from "./lib/dates";
 import { isFutureDate } from "./lib/logLabels";
 import { buildLogEntryFromSavedMeal, type LogMealPayload } from "./lib/logEntry";
@@ -8,15 +19,7 @@ import {
   type QuickLogPayload,
   updateQuickLogEntry,
 } from "./lib/quickLog";
-import { buildSavedMeal, findSavedMeal, type NewSavedMealPayload } from "./lib/savedMeal";
-import {
-  loadDailyGoal,
-  loadEntries,
-  loadSavedMeals,
-  saveDailyGoal,
-  saveEntries,
-  saveSavedMeals,
-} from "./lib/storage";
+import { findSavedMeal, type NewSavedMealPayload } from "./lib/savedMeal";
 import type { DescribeFoodInput, FoodEstimate, ReviewedFoodPayload } from "./types/foodEstimate";
 import type { AppSection } from "./types/health";
 import type { AppView, DailyGoal, DashboardTab, LogEntry, SavedMeal } from "./types/nutrition";
@@ -32,7 +35,10 @@ import { WeekView } from "./components/nutrition/dashboard/WeekView";
 import { AddFoodHubPage } from "./components/nutrition/pages/AddFoodHubPage";
 import { DescribeFoodPage } from "./components/nutrition/pages/DescribeFoodPage";
 import { EstimateReviewPage } from "./components/nutrition/pages/EstimateReviewPage";
-import { GoalsSettingsPage } from "./components/nutrition/pages/GoalsSettingsPage";
+import {
+  GoalsSettingsPage,
+  type SettingsSavePayload,
+} from "./components/nutrition/pages/GoalsSettingsPage";
 import { LogMealPage } from "./components/nutrition/pages/LogMealPage";
 import { NewMealPage } from "./components/nutrition/pages/NewMealPage";
 import { QuickLogPage } from "./components/nutrition/pages/QuickLogPage";
@@ -71,27 +77,45 @@ function App() {
   const [appSection, setAppSection] = useState<AppSection>("nutrition");
   const [selectedDate, setSelectedDate] = useState(() => toDateKey());
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>("day");
-  const [entries, setEntries] = useState<LogEntry[]>(() => loadEntries(toDateKey()));
-  const [goal, setGoal] = useState<DailyGoal>(() => loadDailyGoal(dailyGoal));
-  const [savedMeals, setSavedMeals] = useState<SavedMeal[]>(loadSavedMeals);
+  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [goal, setGoal] = useState<DailyGoal>(dailyGoal);
+  const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
   const [estimateSession, setEstimateSession] = useState<EstimateSession | null>(null);
+  const [loadingNutrition, setLoadingNutrition] = useState(true);
 
   useEffect(() => {
-    saveEntries(selectedDate, entries);
-  }, [entries, selectedDate]);
+    let cancelled = false;
+    Promise.all([fetchGoals(), fetchSavedMeals()])
+      .then(([loadedGoal, meals]) => {
+        if (!cancelled) {
+          setGoal(loadedGoal);
+          setSavedMeals(meals);
+        }
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (!cancelled) setLoadingNutrition(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
-    saveDailyGoal(goal);
-  }, [goal]);
-
-  useEffect(() => {
-    saveSavedMeals(savedMeals);
-  }, [savedMeals]);
+    let cancelled = false;
+    fetchEntriesForDate(selectedDate)
+      .then((loaded) => {
+        if (!cancelled) setEntries(loaded);
+      })
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate]);
 
   const changeDate = (dateKey: string) => {
     if (isFutureDate(dateKey)) return;
     setSelectedDate(dateKey);
-    setEntries(loadEntries(dateKey));
   };
 
   const openDay = (dateKey: string) => {
@@ -105,45 +129,97 @@ function App() {
     setDashboardTab("day");
   };
 
-  const addSavedMealEntry = (payload: LogMealPayload, mealId: string) => {
+  const addSavedMealEntry = async (payload: LogMealPayload, mealId: string) => {
     const meal = findSavedMeal(savedMeals, mealId);
     if (!meal) return;
-    setEntries((prev) => [...prev, buildLogEntryFromSavedMeal(meal, payload)]);
+    const built = buildLogEntryFromSavedMeal(meal, payload);
+    const created = await createLogEntry({
+      logDate: selectedDate,
+      name: built.name,
+      slot: built.slot,
+      time: built.time,
+      servings: built.servings,
+      calories: built.calories,
+      protein: built.protein,
+      carbs: built.carbs,
+      fat: built.fat,
+      savedMealId: built.savedMealId,
+    });
+    setEntries((prev) => [...prev, created]);
   };
 
-  const updateSavedMealEntry = (
+  const updateSavedMealEntry = async (
     entryId: string,
     payload: LogMealPayload,
     mealId: string,
   ) => {
     const meal = findSavedMeal(savedMeals, mealId);
     if (!meal) return;
-    setEntries((prev) =>
-      prev.map((entry) => {
-        if (entry.id !== entryId) return entry;
-        return {
-          ...buildLogEntryFromSavedMeal(meal, payload),
-          id: entryId,
-          time: entry.time,
-        };
-      }),
-    );
+    const existing = entries.find((entry) => entry.id === entryId);
+    if (!existing) return;
+    const built = buildLogEntryFromSavedMeal(meal, payload);
+    const updated = await updateLogEntry(entryId, {
+      name: built.name,
+      slot: built.slot,
+      time: existing.time,
+      servings: built.servings,
+      calories: built.calories,
+      protein: built.protein,
+      carbs: built.carbs,
+      fat: built.fat,
+      savedMealId: built.savedMealId,
+    });
+    setEntries((prev) => prev.map((entry) => (entry.id === entryId ? updated : entry)));
   };
 
-  const addQuickLogEntry = (payload: QuickLogPayload) => {
-    setEntries((prev) => [...prev, buildQuickLogEntry(payload)]);
+  const addQuickLogEntry = async (payload: QuickLogPayload) => {
+    const built = buildQuickLogEntry(payload);
+    const created = await createLogEntry({
+      logDate: selectedDate,
+      name: built.name,
+      slot: built.slot,
+      time: built.time,
+      servings: built.servings,
+      calories: built.calories,
+      protein: built.protein,
+      carbs: built.carbs,
+      fat: built.fat,
+    });
+    setEntries((prev) => [...prev, created]);
   };
 
-  const updateQuickLogEntryById = (entryId: string, payload: QuickLogPayload) => {
-    setEntries((prev) =>
-      prev.map((entry) =>
-        entry.id === entryId ? updateQuickLogEntry(entry, payload) : entry,
-      ),
-    );
+  const updateQuickLogEntryById = async (entryId: string, payload: QuickLogPayload) => {
+    const existing = entries.find((entry) => entry.id === entryId);
+    if (!existing) return;
+    const built = updateQuickLogEntry(existing, payload);
+    const updated = await updateLogEntry(entryId, {
+      name: built.name,
+      slot: built.slot,
+      calories: built.calories,
+      protein: built.protein,
+      carbs: built.carbs,
+      fat: built.fat,
+    });
+    setEntries((prev) => prev.map((entry) => (entry.id === entryId ? updated : entry)));
   };
 
-  const addSavedMeal = (payload: NewSavedMealPayload) => {
-    setSavedMeals((prev) => [...prev, buildSavedMeal(payload)]);
+  const addSavedMeal = async (payload: NewSavedMealPayload) => {
+    const created = await createSavedMeal(payload);
+    setSavedMeals((prev) => [...prev, created]);
+  };
+
+  const handleDeleteEntry = async (id: string) => {
+    await deleteLogEntry(id);
+    setEntries((prev) => prev.filter((entry) => entry.id !== id));
+  };
+
+  const handleSaveSettings = async ({ goal: updatedGoal, ai }: SettingsSavePayload) => {
+    const [savedGoal] = await Promise.all([
+      updateGoals(updatedGoal),
+      updateAiSettings(ai),
+    ]);
+    setGoal(savedGoal);
+    setView({ type: "today" });
   };
 
   if (view.type === "goals-settings") {
@@ -151,10 +227,7 @@ function App() {
       <GoalsSettingsPage
         initialGoal={goal}
         onBack={() => setView({ type: "today" })}
-        onSave={(updated) => {
-          setGoal(updated);
-          setView({ type: "today" });
-        }}
+        onSave={handleSaveSettings}
       />
     );
   }
@@ -211,9 +284,9 @@ function App() {
         estimate={estimateSession.estimate}
         logDate={selectedDate}
         onBack={() => setView({ type: "describe-food" })}
-        onConfirm={(payload, { addToDay, saveAsMeal }) => {
-          if (saveAsMeal) addSavedMeal(reviewedToSavedMeal(payload));
-          if (addToDay) addQuickLogEntry(reviewedToQuickLog(payload));
+        onConfirm={async (payload, { addToDay, saveAsMeal }) => {
+          if (saveAsMeal) await addSavedMeal(reviewedToSavedMeal(payload));
+          if (addToDay) await addQuickLogEntry(reviewedToQuickLog(payload));
           setEstimateSession(null);
           setView(addToDay ? { type: "today" } : { type: "saved-meals" });
         }}
@@ -236,8 +309,8 @@ function App() {
     return (
       <NewMealPage
         onBack={() => setView({ type: "saved-meals" })}
-        onSave={(payload) => {
-          addSavedMeal(payload);
+        onSave={async (payload) => {
+          await addSavedMeal(payload);
           setView({ type: "saved-meals" });
         }}
       />
@@ -258,11 +331,11 @@ function App() {
         onBack={() =>
           setView(view.entryId ? { type: "today" } : { type: "add-food" })
         }
-        onConfirm={(payload) => {
+        onConfirm={async (payload) => {
           if (view.entryId) {
-            updateQuickLogEntryById(view.entryId, payload);
+            await updateQuickLogEntryById(view.entryId, payload);
           } else {
-            addQuickLogEntry(payload);
+            await addQuickLogEntry(payload);
           }
           setView({ type: "today" });
         }}
@@ -287,11 +360,11 @@ function App() {
         onBack={() =>
           setView(view.entryId ? { type: "today" } : { type: "saved-meals" })
         }
-        onConfirm={(payload) => {
+        onConfirm={async (payload) => {
           if (view.entryId) {
-            updateSavedMealEntry(view.entryId, payload, view.mealId);
+            await updateSavedMealEntry(view.entryId, payload, view.mealId);
           } else {
-            addSavedMealEntry(payload, view.mealId);
+            await addSavedMealEntry(payload, view.mealId);
           }
           setView({ type: "today" });
         }}
@@ -305,23 +378,27 @@ function App() {
 
       <div className={TOP_BAR_OFFSET}>
         {appSection === "nutrition" && dashboardTab === "day" && (
-          <Dashboard
-            selectedDate={selectedDate}
-            entries={entries}
-            goal={goal}
-            onDateChange={changeDate}
-            onOpenSettings={() => setView({ type: "goals-settings" })}
-            onDeleteEntry={(id) => setEntries((prev) => prev.filter((e) => e.id !== id))}
-            onEditEntry={(id) => {
-              const entry = entries.find((e) => e.id === id);
-              if (!entry) return;
-              if (entry.savedMealId) {
-                setView({ type: "log-meal", mealId: entry.savedMealId, entryId: id });
-              } else {
-                setView({ type: "quick-log", entryId: id });
-              }
-            }}
-          />
+          loadingNutrition ? (
+            <p className="px-4 py-8 text-center text-sm text-zinc-500">Loading…</p>
+          ) : (
+            <Dashboard
+              selectedDate={selectedDate}
+              entries={entries}
+              goal={goal}
+              onDateChange={changeDate}
+              onOpenSettings={() => setView({ type: "goals-settings" })}
+              onDeleteEntry={handleDeleteEntry}
+              onEditEntry={(id) => {
+                const entry = entries.find((e) => e.id === id);
+                if (!entry) return;
+                if (entry.savedMealId) {
+                  setView({ type: "log-meal", mealId: entry.savedMealId, entryId: id });
+                } else {
+                  setView({ type: "quick-log", entryId: id });
+                }
+              }}
+            />
+          )
         )}
 
         {appSection === "nutrition" && dashboardTab === "week" && (

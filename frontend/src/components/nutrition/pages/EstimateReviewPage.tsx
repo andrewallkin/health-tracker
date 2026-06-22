@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from "react";
-import { suggestMealName } from "../../../lib/mockEstimator";
 import { addToDayLabel, confirmLogLabel } from "../../../lib/logLabels";
 import { defaultMealSlot } from "../../../lib/quickLog";
 import type {
@@ -34,7 +33,7 @@ export function EstimateReviewPage({
   onBack,
   onConfirm,
 }: EstimateReviewPageProps) {
-  const [name, setName] = useState(suggestMealName(input));
+  const [name, setName] = useState(estimate.name);
   const [slot, setSlot] = useState<MealSlot>(defaultMealSlot());
   const [calories, setCalories] = useState(String(estimate.calories_kcal));
   const [protein, setProtein] = useState(String(estimate.macros_g.protein));
@@ -69,6 +68,7 @@ export function EstimateReviewPage({
         )}
 
         <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
+          <h2 className="mb-2 text-base font-medium text-zinc-100">{estimate.name}</h2>
           <div className="mb-3 flex flex-wrap gap-2">
             <Badge
               label={estimate.source === "label" ? "From label" : "Estimated"}

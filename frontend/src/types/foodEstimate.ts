@@ -2,6 +2,7 @@ export type EstimateConfidence = "high" | "medium" | "low";
 export type EstimateSource = "label" | "estimate";
 
 export interface FoodEstimate {
+  name: string;
   calories_kcal: number;
   macros_g: {
     protein: number;
