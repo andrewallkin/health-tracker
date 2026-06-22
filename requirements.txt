@@ -1,0 +1,8 @@
+openai
+python-dotenv
+pillow
+pillow-heif
+pydantic
+
+# dev
+pytest

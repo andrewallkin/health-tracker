@@ -1,0 +1,79 @@
+Done — UI MVP
+
+- Today dashboard (ring, macro bars, remaining budget, meal list)
+- Saved meals library + search
+- Log meal flow (slot, servings, nutrition preview)
+- CRUD: add, edit, delete with live totals
+- localStorage persistence (per-day log, goals, saved meals)
+- Add Food hub (saved meals, quick log, describe/photo)
+- Quick log form (one-off entries, edit support)
+- Goals settings (daily targets, gear icon, fixed dark theme)
+- New meal form (camera/upload, localStorage)
+- AI review screen (static mock → review → add to day and/or save meal)
+- Review confirm toggles (both options in one step)
+- HEIC upload support (convert to JPEG for display/storage)
+
+
+Done — Phase 1.5: history & trends
+
+- Day navigation (prev/next, jump to today)
+- Per-day load/save (empty days start blank; today still seeds mock on first visit)
+- Day | Week | Month tab bar + unified bottom footer (Add food + tabs)
+- Weekly view: calorie bar chart vs goal, averages, days on target, tap day to open
+- Monthly view: calendar heatmap, totals/averages, tap day to open
+- Shared helpers: dates.ts, aggregates.ts, logLabels.ts, loadEntries/listStoredDates
+- Date-aware add labels ("Add to yesterday", "Add to 16 Jun", etc.)
+- Block logging on future days (nav, calendar, Add food button)
+
+
+Next — Phase 2: backend (recommended order)
+
+The UI is feature-complete for v1 except real AI and durable storage.
+Biggest user-visible gap: describe/photo still uses mockEstimator.ts.
+
+1. Python API for food estimation  ← start here
+   - FastAPI app wrapping MacrosEstimator (food_classifier.py)
+   - POST /estimate: note + optional photo(s)
+   - HEIC → JPEG server-side (pillow_heif)
+   - Return FoodEstimate JSON matching frontend types
+   - CORS for Vite dev (localhost:5173)
+
+2. Wire describe/photo to real API
+   - Replace mockEstimator.ts with fetch + loading/error/retry UI
+   - Keep review/edit flow unchanged
+
+3. SQLite persistence + REST API
+   - Tables: daily_goals, saved_meals, log_entries (indexed by date)
+   - Endpoints: CRUD for entries, meals, goals
+   - Replace localStorage in storage.ts with API client
+   - Optional: one-time import from localStorage on first connect
+
+4. Server-side photo storage
+   - Save uploads to disk (dev) or S3 (prod)
+   - Store URL/path on saved_meal records
+   - Serve images from API or static mount
+
+
+Next — Phase 2.5: polish (can interleave with backend)
+
+- Edit saved meals in library (name, macros, photo)
+- Stop seeding mock log data on first visit (start empty or onboarding prompt)
+- Midnight auto-rollover: refresh selectedDate when day changes while app is open
+- Export week/month summary (CSV or share sheet)
+
+
+Later (deferred)
+
+- Garmin active-calorie integration (adjust daily goal from activity data)
+- Varying daily goals (rest vs training day)
+- Chat / recipe UI (per nutrition.txt — do not implement yet)
+- Multi-device sync / auth
+- PWA / mobile install
+- Barcode / nutrition-label OCR path
+
+
+Reference
+
+- Product spec: ../nutrition.txt
+- Python estimator: ../food_classifier.py (MacrosEstimator)
+- Frontend: frontend/ (Vite + React + TS)

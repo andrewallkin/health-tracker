@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --color-surface: #0f1117;
+  --color-surface-elevated: #181b24;
+  --color-calorie: #f59e0b;
+  --color-protein: #60a5fa;
+  --color-carbs: #4ade80;
+  --color-fat: #fb7185;
+  --color-health: #38bdf8;
+}
+
+html {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+@layer components {
+  /* Fixed AppTopBar: py-3 + segmented nav + border */
+  .main-below-topbar {
+    padding-top: 4.3125rem;
+  }
+
+  .page-shell {
+    @apply mx-auto min-h-full max-w-[480px] px-4 pt-4 pb-44;
+  }
+}
+
+body {
+  overflow-x: hidden;
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-surface);
+  background-image: radial-gradient(
+    ellipse 80% 50% at 50% -20%,
+    rgb(245 158 11 / 0.08),
+    transparent
+  );
+  color: #f4f4f5;
+  -webkit-font-smoothing: antialiased;
+}
