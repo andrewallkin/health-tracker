@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ...database import get_db
 from ...db_models import LogEntryRow
@@ -20,7 +20,7 @@ def list_entries(
     to_date: str | None = Query(default=None, alias="to"),
     db: Session = Depends(get_db),
 ) -> list[LogEntry]:
-    query = db.query(LogEntryRow)
+    query = db.query(LogEntryRow).options(joinedload(LogEntryRow.saved_meal))
 
     if date:
         query = query.filter(LogEntryRow.log_date == date)
@@ -50,6 +50,7 @@ def create_entry(payload: LogEntryCreate, db: Session = Depends(get_db)) -> LogE
         carbs=payload.carbs,
         fat=payload.fat,
         saved_meal_id=payload.savedMealId,
+        image_url=payload.imageUrl,
     )
     db.add(row)
     db.commit()
@@ -78,6 +79,7 @@ def update_entry(
         "carbs": "carbs",
         "fat": "fat",
         "savedMealId": "saved_meal_id",
+        "imageUrl": "image_url",
     }
     for api_field, orm_field in field_map.items():
         if api_field in updates:

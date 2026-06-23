@@ -3,7 +3,6 @@ import type { DashboardTab } from "../../types/nutrition";
 interface HomeFooterProps {
   active: DashboardTab;
   onChange: (tab: DashboardTab) => void;
-  onAddFood?: () => void;
 }
 
 const TABS: { id: DashboardTab; label: string }[] = [
@@ -12,23 +11,10 @@ const TABS: { id: DashboardTab; label: string }[] = [
   { id: "month", label: "Month" },
 ];
 
-export function HomeFooter({ active, onChange, onAddFood }: HomeFooterProps) {
-  const showAddFood = active === "day" && onAddFood;
-
+export function HomeFooter({ active, onChange }: HomeFooterProps) {
   return (
-    <footer className="pointer-events-none fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-surface from-50% via-surface/95 to-transparent pt-8">
-      <div className="pointer-events-auto mx-auto max-w-[480px] space-y-3 px-4 pb-6">
-        {showAddFood && (
-          <button
-            type="button"
-            onClick={onAddFood}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 py-3.5 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/25 transition hover:bg-amber-400 active:scale-[0.99]"
-          >
-            <PlusIcon />
-            Add food
-          </button>
-        )}
-
+    <footer className="pointer-events-none fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-surface from-50% via-surface/95 to-transparent pt-6">
+      <div className="pointer-events-auto mx-auto max-w-[480px] px-4 pb-6">
         <nav aria-label="Dashboard views">
           <div className="flex w-full rounded-full border border-white/10 bg-surface-elevated/95 p-1 shadow-lg shadow-black/40 backdrop-blur-md">
             {TABS.map((tab) => (
@@ -49,13 +35,5 @@ export function HomeFooter({ active, onChange, onAddFood }: HomeFooterProps) {
         </nav>
       </div>
     </footer>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <path d="M12 5v14M5 12h14" />
-    </svg>
   );
 }

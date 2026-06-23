@@ -61,6 +61,7 @@ class LogEntryRow(Base):
         ForeignKey("saved_meals.id", ondelete="SET NULL"),
         nullable=True,
     )
+    image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 

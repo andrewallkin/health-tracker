@@ -50,6 +50,10 @@ def saved_meal_to_schema(row: SavedMealRow) -> SavedMeal:
 
 
 def log_entry_to_schema(row: LogEntryRow) -> LogEntry:
+    image_url = row.image_url
+    if not image_url and row.saved_meal is not None:
+        image_url = row.saved_meal.image_url
+
     return LogEntry(
         id=row.id,
         logDate=row.log_date,
@@ -62,6 +66,7 @@ def log_entry_to_schema(row: LogEntryRow) -> LogEntry:
         carbs=row.carbs,
         fat=row.fat,
         savedMealId=row.saved_meal_id,
+        imageUrl=image_url,
     )
 
 
