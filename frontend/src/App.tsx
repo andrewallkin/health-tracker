@@ -27,7 +27,11 @@ import type { AppSection } from "./types/health";
 import type { AppView, DailyGoal, DashboardTab, LogEntry, SavedMeal } from "./types/nutrition";
 import { HealthDayView } from "./components/health/HealthDayView";
 import { HealthMonthView } from "./components/health/HealthMonthView";
+import { HealthUnderConstructionPage } from "./components/health/HealthUnderConstructionPage";
 import { HealthWeekView } from "./components/health/HealthWeekView";
+
+/** Flip to true when wiring in HealthDayView / HealthWeekView / HealthMonthView. */
+const HEALTH_SECTION_ENABLED = false;
 import { AppTopBar } from "./components/layout/AppTopBar";
 import { TOP_BAR_OFFSET } from "./lib/layout";
 import { HomeFooter } from "./components/layout/HomeFooter";
@@ -512,11 +516,13 @@ function App() {
           />
         )}
 
-        {appSection === "health" && dashboardTab === "day" && (
+        {appSection === "health" && !HEALTH_SECTION_ENABLED && <HealthUnderConstructionPage />}
+
+        {appSection === "health" && HEALTH_SECTION_ENABLED && dashboardTab === "day" && (
           <HealthDayView selectedDate={selectedDate} onDateChange={changeDate} />
         )}
 
-        {appSection === "health" && dashboardTab === "week" && (
+        {appSection === "health" && HEALTH_SECTION_ENABLED && dashboardTab === "week" && (
           <HealthWeekView
             anchorDate={selectedDate}
             onAnchorChange={changeDate}
@@ -524,7 +530,7 @@ function App() {
           />
         )}
 
-        {appSection === "health" && dashboardTab === "month" && (
+        {appSection === "health" && HEALTH_SECTION_ENABLED && dashboardTab === "month" && (
           <HealthMonthView
             anchorDate={selectedDate}
             onAnchorChange={changeDate}
@@ -533,7 +539,9 @@ function App() {
         )}
       </div>
 
-      <HomeFooter active={dashboardTab} onChange={setDashboardTab} />
+      {(appSection !== "health" || HEALTH_SECTION_ENABLED) && (
+        <HomeFooter active={dashboardTab} onChange={setDashboardTab} />
+      )}
     </>
   );
 }
