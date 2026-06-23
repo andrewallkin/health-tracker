@@ -9,6 +9,7 @@ import type {
 } from "../../../types/foodEstimate";
 import type { MealSlot } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
+import { MealPhotoView } from "../shared/MealPhotoView";
 import { PageShell } from "../../layout/PageShell";
 
 interface EstimateReviewPageProps {
@@ -16,7 +17,7 @@ interface EstimateReviewPageProps {
   estimate: FoodEstimate;
   logDate: string;
   onBack: () => void;
-  onConfirm: (payload: ReviewedFoodPayload, options: ReviewConfirmOptions) => void;
+  onConfirm: (payload: ReviewedFoodPayload, options: ReviewConfirmOptions) => void | Promise<void>;
 }
 
 const slots: { value: MealSlot; label: string }[] = [
@@ -40,7 +41,9 @@ export function EstimateReviewPage({
   const [carbs, setCarbs] = useState(String(estimate.macros_g.carbs));
   const [fat, setFat] = useState(String(estimate.macros_g.fat));
   const [addToDay, setAddToDay] = useState(true);
-  const [saveAsMeal, setSaveAsMeal] = useState(true);
+  const [saveAsMeal, setSaveAsMeal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const payload: ReviewedFoodPayload = {
     name,
@@ -56,16 +59,94 @@ export function EstimateReviewPage({
   const isValid = name.trim().length > 0 && payload.calories > 0;
   const canConfirm = isValid && (addToDay || saveAsMeal);
 
+  const handleConfirm = async () => {
+    if (!canConfirm) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      await onConfirm(payload, { addToDay, saveAsMeal });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
-    <PageShell title="Review estimate" subtitle="Edit before logging or saving" onBack={onBack}>
-      <div className="space-y-5 pb-44">
-        {input.photoUrl && (
-          <img
-            src={input.photoUrl}
-            alt="Meal"
-            className="h-40 w-full rounded-2xl object-cover"
-          />
+    <PageShell
+      title="Review estimate"
+      subtitle="Edit before logging or saving"
+      onBack={onBack}
+      footer={
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center bg-gradient-to-t from-surface via-surface/90 to-transparent px-4 pb-6 pt-10">
+          <button
+            type="button"
+            disabled={!canConfirm || isSaving}
+            onClick={handleConfirm}
+            className="pointer-events-auto w-full max-w-[448px] rounded-full bg-amber-500 py-3.5 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/30 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {isSaving ? "Saving…" : confirmLogLabel(addToDay, saveAsMeal, logDate)}
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-5 pb-28">
+        {error && (
+          <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+            {error}
+          </p>
         )}
+
+        {input.photoUrl && <MealPhotoView src={input.photoUrl} alt="Meal" />}
+
+        {isValid && (
+          <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
+            <h2 className="mb-3 text-sm font-medium text-zinc-400">Preview</h2>
+            <MacroChips macros={payload} size="md" />
+          </section>
+        )}
+
+        <section>
+          <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Calories (kcal)">
+              <input
+                type="number"
+                min={1}
+                value={calories}
+                onChange={(e) => setCalories(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Protein (g)">
+              <input
+                type="number"
+                min={0}
+                value={protein}
+                onChange={(e) => setProtein(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Carbs (g)">
+              <input
+                type="number"
+                min={0}
+                value={carbs}
+                onChange={(e) => setCarbs(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Fat (g)">
+              <input
+                type="number"
+                min={0}
+                value={fat}
+                onChange={(e) => setFat(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+        </section>
 
         <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
           <h2 className="mb-2 text-base font-medium text-zinc-100">{estimate.name}</h2>
@@ -121,84 +202,23 @@ export function EstimateReviewPage({
           </div>
         </section>
 
-        <section>
-          <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Calories (kcal)">
-              <input
-                type="number"
-                min={1}
-                value={calories}
-                onChange={(e) => setCalories(e.target.value)}
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Protein (g)">
-              <input
-                type="number"
-                min={0}
-                value={protein}
-                onChange={(e) => setProtein(e.target.value)}
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Carbs (g)">
-              <input
-                type="number"
-                min={0}
-                value={carbs}
-                onChange={(e) => setCarbs(e.target.value)}
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Fat (g)">
-              <input
-                type="number"
-                min={0}
-                value={fat}
-                onChange={(e) => setFat(e.target.value)}
-                className={inputClass}
-              />
-            </Field>
+        <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
+          <p className="mb-2 text-xs font-medium text-zinc-500">What should we do?</p>
+          <div className="space-y-2">
+            <ToggleOption
+              checked={addToDay}
+              onChange={setAddToDay}
+              label={addToDayLabel(logDate)}
+              description={`Log as ${slot}`}
+            />
+            <ToggleOption
+              checked={saveAsMeal}
+              onChange={setSaveAsMeal}
+              label="Save to library"
+              description="Reuse this meal later"
+            />
           </div>
         </section>
-
-        {isValid && (
-          <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
-            <h2 className="mb-3 text-sm font-medium text-zinc-400">Preview</h2>
-            <MacroChips macros={payload} size="md" />
-          </section>
-        )}
-      </div>
-
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 bg-gradient-to-t from-surface via-surface/90 to-transparent px-4 pb-6 pt-10">
-        <div className="pointer-events-auto mx-auto max-w-[448px] space-y-3">
-          <div className="rounded-2xl border border-white/10 bg-surface-elevated/95 p-3 backdrop-blur-sm">
-            <p className="mb-2 text-xs font-medium text-zinc-500">What should we do?</p>
-            <div className="space-y-2">
-              <ToggleOption
-                checked={addToDay}
-                onChange={setAddToDay}
-                label={addToDayLabel(logDate)}
-                description={`Log as ${slot}`}
-              />
-              <ToggleOption
-                checked={saveAsMeal}
-                onChange={setSaveAsMeal}
-                label="Save to library"
-                description="Reuse this meal later"
-              />
-            </div>
-          </div>
-          <button
-            type="button"
-            disabled={!canConfirm}
-            onClick={() => onConfirm(payload, { addToDay, saveAsMeal })}
-            className="w-full rounded-full bg-amber-500 py-3.5 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/30 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {confirmLogLabel(addToDay, saveAsMeal, logDate)}
-          </button>
-        </div>
       </div>
     </PageShell>
   );

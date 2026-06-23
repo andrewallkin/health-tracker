@@ -18,9 +18,9 @@ import { DateNav } from "../../layout/DateNav";
 interface MonthViewProps {
   anchorDate: string;
   goal: DailyGoal;
+  entriesVersion: number;
   onAnchorChange: (dateKey: string) => void;
   onSelectDate: (dateKey: string) => void;
-  onOpenSettings: () => void;
 }
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -28,9 +28,9 @@ const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export function MonthView({
   anchorDate,
   goal,
+  entriesVersion,
   onAnchorChange,
   onSelectDate,
-  onOpenSettings,
 }: MonthViewProps) {
   const { year, month } = monthFromDateKey(anchorDate);
   const gridDates = getMonthGrid(year, month);
@@ -53,7 +53,7 @@ export function MonthView({
     return () => {
       cancelled = true;
     };
-  }, [rangeStart, rangeEnd]);
+  }, [rangeStart, rangeEnd, entriesVersion]);
 
   const summary = useMemo(
     () => aggregateMonth(year, month, goal, entriesByDate),
@@ -67,19 +67,6 @@ export function MonthView({
         sublabel="Monthly summary"
         onPrev={() => onAnchorChange(addMonths(anchorDate, -1))}
         onNext={() => onAnchorChange(addMonths(anchorDate, 1))}
-        trailing={
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            className="rounded-full p-2 text-zinc-400 transition hover:bg-white/8 hover:text-zinc-200"
-            aria-label="Settings"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-            </svg>
-          </button>
-        }
       />
 
       {loading ? (

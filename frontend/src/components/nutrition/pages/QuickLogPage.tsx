@@ -13,7 +13,7 @@ interface QuickLogPageProps {
   isEditing?: boolean;
   initialEntry?: LogEntry;
   onBack: () => void;
-  onConfirm: (payload: QuickLogPayload) => void;
+  onConfirm: (payload: QuickLogPayload) => void | Promise<void>;
 }
 
 const slots: { value: MealSlot; label: string }[] = [
@@ -36,6 +36,8 @@ export function QuickLogPage({
   const [protein, setProtein] = useState(String(initialEntry?.protein ?? ""));
   const [carbs, setCarbs] = useState(String(initialEntry?.carbs ?? ""));
   const [fat, setFat] = useState(String(initialEntry?.fat ?? ""));
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const payload: QuickLogPayload = {
     name,
@@ -48,6 +50,19 @@ export function QuickLogPage({
 
   const isValid = name.trim().length > 0 && payload.calories > 0;
 
+  const handleConfirm = async () => {
+    if (!isValid) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      await onConfirm(payload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save entry.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <PageShell
       title={isEditing ? "Edit entry" : "Quick log"}
@@ -57,16 +72,22 @@ export function QuickLogPage({
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center bg-gradient-to-t from-surface via-surface/90 to-transparent px-4 pb-6 pt-10">
           <button
             type="button"
-            disabled={!isValid}
-            onClick={() => onConfirm(payload)}
+            disabled={!isValid || isSaving}
+            onClick={handleConfirm}
             className="pointer-events-auto w-full max-w-[448px] rounded-full bg-amber-500 py-3.5 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/30 transition hover:bg-amber-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isEditing ? "Save changes" : addToDayLabel(logDate)}
+            {isSaving ? "Saving…" : isEditing ? "Save changes" : addToDayLabel(logDate)}
           </button>
         </div>
       }
     >
       <div className="space-y-5 pb-28">
+        {error && (
+          <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+            {error}
+          </p>
+        )}
+
         <Field label="Name">
           <input
             type="text"

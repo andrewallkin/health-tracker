@@ -38,6 +38,20 @@ class SavedMealCreate(BaseModel):
     fat: float = Field(ge=0)
 
 
+class SavedMealUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    imageUrl: str | None = None
+    calories: int | None = Field(default=None, gt=0)
+    protein: float | None = Field(default=None, ge=0)
+    carbs: float | None = Field(default=None, ge=0)
+    fat: float | None = Field(default=None, ge=0)
+
+
+class PhotoUploadResponse(BaseModel):
+    url: str
+
+
 class LogEntry(BaseModel):
     id: str
     logDate: str
@@ -50,6 +64,7 @@ class LogEntry(BaseModel):
     carbs: float = Field(ge=0)
     fat: float = Field(ge=0)
     savedMealId: str | None = None
+    imageUrl: str | None = None
 
 
 class LogEntryCreate(BaseModel):
@@ -63,6 +78,7 @@ class LogEntryCreate(BaseModel):
     carbs: float = Field(ge=0)
     fat: float = Field(ge=0)
     savedMealId: str | None = None
+    imageUrl: str | None = None
 
 
 class LogEntryUpdate(BaseModel):
@@ -75,6 +91,7 @@ class LogEntryUpdate(BaseModel):
     carbs: float | None = Field(default=None, ge=0)
     fat: float | None = Field(default=None, ge=0)
     savedMealId: str | None = None
+    imageUrl: str | None = None
 
 
 class AiSettings(BaseModel):
@@ -86,6 +103,7 @@ class AiSettings(BaseModel):
 
 class AiSettingsUpdate(BaseModel):
     apiKey: str | None = None
+    clearApiKey: bool = False
     textModel: str
     imageModel: str
 
@@ -94,6 +112,7 @@ class ModelOption(BaseModel):
     id: str
     label: str
     supportsVision: bool
+    recommendedFor: Literal["text", "image"] | None = None
 
 
 class ModelsResponse(BaseModel):

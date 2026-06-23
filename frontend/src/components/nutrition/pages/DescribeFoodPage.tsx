@@ -1,22 +1,30 @@
 import { useState } from "react";
-import { estimateFood } from "../../../lib/api";
+import { ApiError, estimateFood } from "../../../lib/api";
 import type { DescribeFoodInput, FoodEstimate } from "../../../types/foodEstimate";
 import { MealPhotoPicker } from "../shared/MealPhotoPicker";
 import { PageShell } from "../../layout/PageShell";
 
 interface DescribeFoodPageProps {
   initialInput?: DescribeFoodInput;
+  hasApiKey: boolean;
   onBack: () => void;
+  onOpenSettings: () => void;
   onEstimated: (input: DescribeFoodInput, estimate: FoodEstimate) => void;
 }
 
-export function DescribeFoodPage({ initialInput, onBack, onEstimated }: DescribeFoodPageProps) {
+export function DescribeFoodPage({
+  initialInput,
+  hasApiKey,
+  onBack,
+  onOpenSettings,
+  onEstimated,
+}: DescribeFoodPageProps) {
   const [note, setNote] = useState(initialInput?.note ?? "");
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(initialInput?.photoUrl);
   const [isEstimating, setIsEstimating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canEstimate = note.trim().length > 0 || Boolean(photoUrl);
+  const canEstimate = hasApiKey && (note.trim().length > 0 || Boolean(photoUrl));
 
   const handleEstimate = async () => {
     if (!canEstimate) return;
@@ -32,7 +40,11 @@ export function DescribeFoodPage({ initialInput, onBack, onEstimated }: Describe
       const estimate = await estimateFood(input);
       onEstimated(input, estimate);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not generate an estimate. Try again.");
+      if (err instanceof ApiError && err.status === 422) {
+        setError(err.message);
+      } else {
+        setError(err instanceof Error ? err.message : "Could not generate an estimate. Try again.");
+      }
     } finally {
       setIsEstimating(false);
     }
@@ -40,7 +52,7 @@ export function DescribeFoodPage({ initialInput, onBack, onEstimated }: Describe
 
   return (
     <PageShell
-      title="Describe or photo"
+      title="AI estimate"
       subtitle="AI calorie and macro estimate"
       onBack={onBack}
       footer={
@@ -57,9 +69,34 @@ export function DescribeFoodPage({ initialInput, onBack, onEstimated }: Describe
       }
     >
       <div className="space-y-5 pb-28">
+        {!hasApiKey && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-200">
+            <p>Add an OpenAI API key in Settings to use AI estimates.</p>
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="mt-2 font-medium text-amber-400 underline underline-offset-2 transition hover:text-amber-300"
+            >
+              Open Settings
+            </button>
+          </div>
+        )}
+
         {error && (
           <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
             {error}
+            {error.includes("Settings") && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="font-medium underline underline-offset-2"
+                >
+                  Open Settings
+                </button>
+              </>
+            )}
           </p>
         )}
 

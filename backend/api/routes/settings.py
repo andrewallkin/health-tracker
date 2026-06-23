@@ -10,11 +10,56 @@ from ..schemas import AiSettings, AiSettingsUpdate, ModelOption, ModelsResponse
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
+# Chat Completions models with strict JSON schema (Structured Outputs) support.
+# Vision-capable models are listed for photo estimates; text-only picks omit vision.
 MODEL_OPTIONS: list[ModelOption] = [
-    ModelOption(id="gpt-5-nano", label="GPT-5 Nano (text)", supportsVision=False),
-    ModelOption(id="gpt-5-mini", label="GPT-5 Mini (vision)", supportsVision=True),
-    ModelOption(id="gpt-4o-mini", label="GPT-4o Mini (vision)", supportsVision=True),
-    ModelOption(id="gpt-4o", label="GPT-4o (vision)", supportsVision=True),
+    # Text-only estimates (structured outputs, cost-optimized)
+    ModelOption(
+        id="gpt-5-nano",
+        label="GPT-5 Nano",
+        supportsVision=False,
+        recommendedFor="text",
+    ),
+    ModelOption(id="gpt-5.4-nano", label="GPT-5.4 Nano", supportsVision=False),
+    ModelOption(id="gpt-4.1-nano", label="GPT-4.1 Nano", supportsVision=False),
+    ModelOption(id="gpt-4o-mini", label="GPT-4o Mini", supportsVision=False),
+    ModelOption(id="gpt-5.4-mini", label="GPT-5.4 Mini", supportsVision=False),
+    ModelOption(id="gpt-5-mini", label="GPT-5 Mini", supportsVision=False),
+    ModelOption(id="gpt-4.1-mini", label="GPT-4.1 Mini", supportsVision=False),
+    ModelOption(id="gpt-4.1", label="GPT-4.1", supportsVision=False),
+    ModelOption(id="gpt-5.4", label="GPT-5.4", supportsVision=False),
+    ModelOption(id="gpt-5.4-pro", label="GPT-5.4 Pro", supportsVision=False),
+    ModelOption(id="gpt-5.2", label="GPT-5.2", supportsVision=False),
+    ModelOption(id="gpt-5.2-pro", label="GPT-5.2 Pro", supportsVision=False),
+    ModelOption(id="gpt-5.1", label="GPT-5.1", supportsVision=False),
+    ModelOption(id="gpt-5", label="GPT-5", supportsVision=False),
+    ModelOption(id="gpt-5-pro", label="GPT-5 Pro", supportsVision=False),
+    ModelOption(id="gpt-5.5", label="GPT-5.5", supportsVision=False),
+    ModelOption(id="gpt-5.5-pro", label="GPT-5.5 Pro", supportsVision=False),
+    # Photo estimates (structured outputs + vision)
+    ModelOption(
+        id="gpt-5-mini",
+        label="GPT-5 Mini",
+        supportsVision=True,
+        recommendedFor="image",
+    ),
+    ModelOption(id="gpt-5-nano", label="GPT-5 Nano", supportsVision=True),
+    ModelOption(id="gpt-5.4-nano", label="GPT-5.4 Nano", supportsVision=True),
+    ModelOption(id="gpt-5.4-mini", label="GPT-5.4 Mini", supportsVision=True),
+    ModelOption(id="gpt-4.1-nano", label="GPT-4.1 Nano", supportsVision=True),
+    ModelOption(id="gpt-4o-mini", label="GPT-4o Mini", supportsVision=True),
+    ModelOption(id="gpt-4.1-mini", label="GPT-4.1 Mini", supportsVision=True),
+    ModelOption(id="gpt-4.1", label="GPT-4.1", supportsVision=True),
+    ModelOption(id="gpt-4o", label="GPT-4o", supportsVision=True),
+    ModelOption(id="gpt-5.4", label="GPT-5.4", supportsVision=True),
+    ModelOption(id="gpt-5.4-pro", label="GPT-5.4 Pro", supportsVision=True),
+    ModelOption(id="gpt-5.2", label="GPT-5.2", supportsVision=True),
+    ModelOption(id="gpt-5.2-pro", label="GPT-5.2 Pro", supportsVision=True),
+    ModelOption(id="gpt-5.1", label="GPT-5.1", supportsVision=True),
+    ModelOption(id="gpt-5", label="GPT-5", supportsVision=True),
+    ModelOption(id="gpt-5-pro", label="GPT-5 Pro", supportsVision=True),
+    ModelOption(id="gpt-5.5", label="GPT-5.5", supportsVision=True),
+    ModelOption(id="gpt-5.5-pro", label="GPT-5.5 Pro", supportsVision=True),
 ]
 
 
@@ -33,7 +78,9 @@ def update_ai_settings(payload: AiSettingsUpdate, db: Session = Depends(get_db))
     row = get_or_create_app_settings(db)
     row.text_model = payload.textModel.strip()
     row.image_model = payload.imageModel.strip()
-    if payload.apiKey and payload.apiKey.strip():
+    if payload.clearApiKey:
+        row.openai_api_key_encrypted = None
+    elif payload.apiKey and payload.apiKey.strip():
         row.openai_api_key_encrypted = encrypt_api_key(payload.apiKey.strip())
     db.commit()
     db.refresh(row)

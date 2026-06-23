@@ -1,0 +1,29 @@
+[project]
+name = "health-tracker-backend"
+version = "0.1.0"
+description = "FastAPI nutrition and health tracking API"
+requires-python = ">=3.11"
+dependencies = [
+    "openai",
+    "python-dotenv",
+    "pillow",
+    "pillow-heif",
+    "pydantic",
+    "fastapi",
+    "python-multipart",
+    "uvicorn[standard]",
+    "sqlalchemy",
+    "cryptography",
+]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "httpx",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

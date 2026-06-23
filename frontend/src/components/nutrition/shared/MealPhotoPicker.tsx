@@ -1,11 +1,16 @@
-import { useRef, useState } from "react";
-import { readMealPhoto } from "../../../lib/mealPhoto";
+import { useRef, useState, type RefObject } from "react";
+import { uploadMealPhoto } from "../../../lib/api";
+import { prepareMealPhotoBlob, withTimeout } from "../../../lib/mealPhoto";
+import { MealPhotoView } from "./MealPhotoView";
 
 interface MealPhotoPickerProps {
   label?: string;
   imageUrl?: string;
   onChange: (imageUrl: string | undefined) => void;
 }
+
+const UPLOAD_TIMEOUT_MS = 30_000;
+const PROCESS_TIMEOUT_MS = 60_000;
 
 export function MealPhotoPicker({
   label = "Photo (optional)",
@@ -14,22 +19,55 @@ export function MealPhotoPicker({
 }: MealPhotoPickerProps) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const inFlightRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleFile = async (file: File | undefined) => {
-    if (!file) return;
+  const resetFileInputs = () => {
+    resetInput(cameraInputRef);
+    resetInput(uploadInputRef);
+  };
 
+  const handleFile = async (file: File | undefined) => {
+    if (!file || inFlightRef.current) return;
+
+    inFlightRef.current = true;
     setIsLoading(true);
     setError(null);
     try {
-      const dataUrl = await readMealPhoto(file);
-      onChange(dataUrl);
+      const blob = await withTimeout(
+        prepareMealPhotoBlob(file),
+        PROCESS_TIMEOUT_MS,
+        "Photo processing timed out. Try again or choose a different image.",
+      );
+      const url = await withTimeout(
+        uploadMealPhoto(blob, file.name.replace(/\.[^.]+$/, ".jpg")),
+        UPLOAD_TIMEOUT_MS,
+        "Upload timed out. Check your connection and try again.",
+      );
+      onChange(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add photo.");
     } finally {
+      inFlightRef.current = false;
       setIsLoading(false);
+      resetFileInputs();
     }
+  };
+
+  const openCamera = () => {
+    resetInput(cameraInputRef);
+    cameraInputRef.current?.click();
+  };
+
+  const openUpload = () => {
+    resetInput(uploadInputRef);
+    uploadInputRef.current?.click();
+  };
+
+  const handleRemove = () => {
+    onChange(undefined);
+    resetFileInputs();
   };
 
   return (
@@ -37,22 +75,38 @@ export function MealPhotoPicker({
       <h2 className="mb-3 text-sm font-medium text-zinc-400">{label}</h2>
 
       {imageUrl ? (
-        <div className="relative overflow-hidden rounded-2xl border border-white/10">
-          <img src={imageUrl} alt="Meal preview" className="h-44 w-full object-cover" />
-          <button
-            type="button"
-            onClick={() => onChange(undefined)}
-            className="absolute top-3 right-3 rounded-lg bg-black/60 px-2.5 py-1 text-xs font-medium text-zinc-100 backdrop-blur-sm transition hover:bg-black/75"
-          >
-            Remove
-          </button>
+        <div className="relative">
+          <MealPhotoView src={imageUrl} alt="Meal preview" />
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-sm">
+              <p className="text-sm font-medium text-zinc-100">Uploading photo…</p>
+            </div>
+          )}
+          <div className="absolute top-3 right-3 z-10 flex gap-2">
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={openUpload}
+              className="rounded-lg bg-black/60 px-2.5 py-1 text-xs font-medium text-zinc-100 backdrop-blur-sm transition hover:bg-black/75 disabled:opacity-50"
+            >
+              Change
+            </button>
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={handleRemove}
+              className="rounded-lg bg-black/60 px-2.5 py-1 text-xs font-medium text-zinc-100 backdrop-blur-sm transition hover:bg-black/75 disabled:opacity-50"
+            >
+              Remove
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             disabled={isLoading}
-            onClick={() => cameraInputRef.current?.click()}
+            onClick={openCamera}
             className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-white/4 px-3 py-5 text-sm font-medium text-zinc-300 transition hover:border-white/20 hover:bg-white/6 disabled:opacity-50"
           >
             <CameraIcon />
@@ -61,7 +115,7 @@ export function MealPhotoPicker({
           <button
             type="button"
             disabled={isLoading}
-            onClick={() => uploadInputRef.current?.click()}
+            onClick={openUpload}
             className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-white/4 px-3 py-5 text-sm font-medium text-zinc-300 transition hover:border-white/20 hover:bg-white/6 disabled:opacity-50"
           >
             <UploadIcon />
@@ -70,7 +124,9 @@ export function MealPhotoPicker({
         </div>
       )}
 
-      {isLoading && <p className="mt-2 text-xs text-zinc-500">Processing photo…</p>}
+      {!imageUrl && isLoading && (
+        <p className="mt-2 text-xs text-zinc-500">Uploading photo…</p>
+      )}
       {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
 
       <input
@@ -81,7 +137,6 @@ export function MealPhotoPicker({
         className="hidden"
         onChange={(e) => {
           void handleFile(e.target.files?.[0]);
-          e.target.value = "";
         }}
       />
       <input
@@ -91,11 +146,14 @@ export function MealPhotoPicker({
         className="hidden"
         onChange={(e) => {
           void handleFile(e.target.files?.[0]);
-          e.target.value = "";
         }}
       />
     </section>
   );
+}
+
+function resetInput(ref: RefObject<HTMLInputElement | null>) {
+  if (ref.current) ref.current.value = "";
 }
 
 function CameraIcon() {

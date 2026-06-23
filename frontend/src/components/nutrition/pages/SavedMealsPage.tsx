@@ -8,6 +8,7 @@ interface SavedMealsPageProps {
   onBack: () => void;
   onCreateNew: () => void;
   onSelectMeal: (mealId: string) => void;
+  onEditMeal: (mealId: string) => void;
 }
 
 export function SavedMealsPage({
@@ -15,6 +16,7 @@ export function SavedMealsPage({
   onBack,
   onCreateNew,
   onSelectMeal,
+  onEditMeal,
 }: SavedMealsPageProps) {
   const [query, setQuery] = useState("");
 
@@ -55,7 +57,12 @@ export function SavedMealsPage({
           <p className="py-8 text-center text-sm text-zinc-500">No meals match your search.</p>
         ) : (
           filtered.map((meal) => (
-            <SavedMealCard key={meal.id} meal={meal} onSelect={onSelectMeal} />
+            <SavedMealCard
+              key={meal.id}
+              meal={meal}
+              onSelect={onSelectMeal}
+              onEdit={onEditMeal}
+            />
           ))
         )}
       </div>

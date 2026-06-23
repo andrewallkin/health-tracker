@@ -6,7 +6,7 @@ Personal health and nutrition tooling: Garmin Connect exploration, OpenAI food e
 
 | Folder | Description |
 |--------|-------------|
-| [`backend/`](backend/) | FastAPI app, SQLite persistence, and `MacrosEstimator` |
+| [`backend/`](backend/) | FastAPI app, SQLite persistence, and `MacrosEstimator` (`backend/pyproject.toml`) |
 | [`frontend/`](frontend/) | Nutrition & health dashboard (Vite + React + TypeScript) |
 | [`notebooks/`](notebooks/) | Jupyter notebooks for Garmin API and food vision demos |
 | [`scripts/`](scripts/) | Utility scripts (Garmin demo, DB seeding) |
@@ -17,20 +17,18 @@ Personal health and nutrition tooling: Garmin Connect exploration, OpenAI food e
 
 ### Backend + database
 
-Using [uv](https://docs.astral.sh/uv/) (recommended):
+Using [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv sync
+# Root: scripts, notebooks, and backend deps (uv workspace)
+uv sync --all-packages --all-groups
 cp .env.example .env
 ```
 
-Or with pip:
+Backend-only sync (same deps a future Docker image will use):
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
+uv sync --project backend --all-groups
 ```
 
 Generate an encryption key and add it to `.env`:
@@ -48,7 +46,7 @@ uv run python scripts/seed_db.py --reset
 Run the API (from repo root):
 
 ```bash
-uv run uvicorn backend.main:app --reload --port 8000
+uv run --project backend uvicorn backend.main:app --reload --port 8000
 ```
 
 Add your OpenAI API key and model choices in the app **Settings** screen (stored encrypted in SQLite).
@@ -66,10 +64,16 @@ Open `http://localhost:5173`. Vite proxies `/api` to the backend on port 8000.
 ### Tests
 
 ```bash
-uv run pytest backend/tests
+uv run --project backend pytest
 ```
 
 ## Notebooks
+
+Install the Jupyter kernel once (uses the root project env):
+
+```bash
+uv run python -m ipykernel install --user --name health-tracker --display-name "Health Tracker"
+```
 
 Run from the repo root or from `notebooks/`:
 

@@ -16,17 +16,17 @@ import { DateNav } from "../../layout/DateNav";
 interface WeekViewProps {
   anchorDate: string;
   goal: DailyGoal;
+  entriesVersion: number;
   onAnchorChange: (dateKey: string) => void;
   onSelectDate: (dateKey: string) => void;
-  onOpenSettings: () => void;
 }
 
 export function WeekView({
   anchorDate,
   goal,
+  entriesVersion,
   onAnchorChange,
   onSelectDate,
-  onOpenSettings,
 }: WeekViewProps) {
   const { start, end, dates } = getWeekRange(anchorDate);
   const [entriesByDate, setEntriesByDate] = useState<Map<string, LogEntry[]>>(new Map());
@@ -46,7 +46,7 @@ export function WeekView({
     return () => {
       cancelled = true;
     };
-  }, [start, end]);
+  }, [start, end, entriesVersion]);
 
   const summary = useMemo(
     () => aggregateWeek(dates, goal, entriesByDate),
@@ -61,16 +61,6 @@ export function WeekView({
         sublabel="Weekly summary"
         onPrev={() => onAnchorChange(addWeeks(anchorDate, -1))}
         onNext={() => onAnchorChange(addWeeks(anchorDate, 1))}
-        trailing={
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            aria-label="Daily goals"
-            className="rounded-xl border border-white/10 bg-white/5 p-2.5 text-zinc-400 transition hover:bg-white/10 hover:text-zinc-200"
-          >
-            <GearIcon />
-          </button>
-        }
       />
 
       {loading ? (
@@ -172,14 +162,5 @@ function Stat({ label, value, accent }: { label: string; value: string | number;
       <p className={`text-[10px] font-bold uppercase tracking-wider ${accent}`}>{label}</p>
       <p className="mt-1 text-lg font-bold text-white">{value}</p>
     </div>
-  );
-}
-
-function GearIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l-.15-.09a2 2 0 0 0-.73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
   );
 }

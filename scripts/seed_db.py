@@ -27,7 +27,6 @@ SAVED_MEALS = [
         "id": "meal-1",
         "name": "Sweet potato chilli mince",
         "description": "Lean beef mince with kidney beans, sweet potato, and spices.",
-        "image_url": "/sweet_potato_chilli_mince.jpg",
         "calories": 580,
         "protein": 42,
         "carbs": 52,

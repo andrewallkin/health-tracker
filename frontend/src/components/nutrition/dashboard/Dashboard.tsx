@@ -1,4 +1,4 @@
-import { getDailySummary } from "../../../data/mock";
+import { getDailySummary } from "../../../lib/aggregates";
 import { addDays, formatDayHeader, isToday, toDateKey } from "../../../lib/dates";
 import { PAGE_SHELL } from "../../../lib/layout";
 import { isFutureDate } from "../../../lib/logLabels";
@@ -13,20 +13,24 @@ interface DashboardProps {
   selectedDate: string;
   entries: LogEntry[];
   goal: DailyGoal;
+  deleteError?: string | null;
+  onDismissDeleteError?: () => void;
   onDateChange: (dateKey: string) => void;
-  onOpenSettings: () => void;
   onDeleteEntry: (id: string) => void;
   onEditEntry: (id: string) => void;
+  onAddFood?: () => void;
 }
 
 export function Dashboard({
   selectedDate,
   entries,
   goal,
+  deleteError,
+  onDismissDeleteError,
   onDateChange,
-  onOpenSettings,
   onDeleteEntry,
   onEditEntry,
+  onAddFood,
 }: DashboardProps) {
   const summary = getDailySummary(entries, goal);
   const title = isToday(selectedDate) ? "Today" : formatDayHeader(selectedDate);
@@ -41,16 +45,6 @@ export function Dashboard({
         disableNext={isFutureDate(addDays(selectedDate, 1))}
         onJumpToday={() => onDateChange(toDateKey())}
         showToday={!isToday(selectedDate)}
-        trailing={
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            aria-label="Daily goals"
-            className="rounded-xl border border-white/10 bg-white/5 p-2.5 text-zinc-400 transition hover:bg-white/10 hover:text-zinc-200"
-          >
-            <GearIcon />
-          </button>
-        }
       />
 
       <div className="mb-5 rounded-2xl border border-white/10 bg-surface-elevated/80 p-5 backdrop-blur-sm">
@@ -61,20 +55,46 @@ export function Dashboard({
         <RemainingBudget remaining={summary.remaining} />
       </div>
 
-      <div className="mb-8 rounded-2xl border border-white/10 bg-white/4 p-5">
+      <div className="mb-6 rounded-2xl border border-white/10 bg-white/4 p-5">
         <MacroBars consumed={summary.consumed} goal={summary.goal} />
       </div>
+
+      {onAddFood && (
+        <button
+          type="button"
+          onClick={onAddFood}
+          className="mb-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 py-3 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/20 transition hover:bg-amber-400 active:scale-[0.99]"
+        >
+          <PlusIcon />
+          Add food
+        </button>
+      )}
+
+      {deleteError && (
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+          <span>{deleteError}</span>
+          {onDismissDeleteError && (
+            <button
+              type="button"
+              onClick={onDismissDeleteError}
+              className="shrink-0 text-rose-400/80 transition hover:text-rose-200"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
 
       <MealList entries={entries} onDeleteEntry={onDeleteEntry} onEditEntry={onEditEntry} />
     </div>
   );
 }
 
-function GearIcon() {
+function PlusIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l-.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <circle cx="12" cy="12" r="3" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <path d="M12 5v14M5 12h14" />
     </svg>
   );
 }

@@ -1,20 +1,27 @@
 [project]
 name = "health-tracker"
 version = "0.1.0"
-description = "Personal health and nutrition tracker"
+description = "Scripts, notebooks, and investigations for health-tracker"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "openai",
+    "health-tracker-backend",
+    "garminconnect",
+    "readchar",
+    "requests",
     "python-dotenv",
-    "pillow",
-    "pillow-heif",
-    "pydantic",
-    "fastapi",
-    "uvicorn[standard]",
-    "sqlalchemy",
-    "cryptography",
+    "ipykernel",
+    "jupyter",
 ]
+
+[tool.uv.workspace]
+members = ["backend"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+health-tracker-backend = { workspace = true }
 
 [dependency-groups]
 dev = [

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { scaleMacros } from "../../../data/mock";
+import { scaleMacros } from "../../../lib/aggregates";
 import { addToDayLabel } from "../../../lib/logLabels";
 import type { LogMealPayload } from "../../../lib/logEntry";
 import { findSavedMeal } from "../../../lib/savedMeal";
 import type { MealSlot, SavedMeal } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
+import { MealPhotoView } from "../shared/MealPhotoView";
 import { PageShell } from "../../layout/PageShell";
 
 interface LogMealPageProps {
@@ -15,7 +16,7 @@ interface LogMealPageProps {
   initialSlot?: MealSlot;
   initialServings?: number;
   onBack: () => void;
-  onConfirm: (payload: LogMealPayload) => void;
+  onConfirm: (payload: LogMealPayload) => void | Promise<void>;
 }
 
 const slots: { value: MealSlot; label: string }[] = [
@@ -46,6 +47,8 @@ export function LogMealPage({
   const meal = findSavedMeal(meals, mealId);
   const [slot, setSlot] = useState<MealSlot>(initialSlot ?? defaultSlot());
   const [servings, setServings] = useState(initialServings ?? 1);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!meal) {
     return (
@@ -57,6 +60,18 @@ export function LogMealPage({
 
   const scaled = scaleMacros(meal, servings);
 
+  const handleConfirm = async () => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      await onConfirm({ slot, servings });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save entry.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <PageShell
       title={isEditing ? "Edit meal" : "Log meal"}
@@ -66,21 +81,24 @@ export function LogMealPage({
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center bg-gradient-to-t from-surface via-surface/90 to-transparent px-4 pb-6 pt-10">
           <button
             type="button"
-            onClick={() => onConfirm({ slot, servings })}
-            className="pointer-events-auto w-full max-w-[448px] rounded-full bg-amber-500 py-3.5 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/30 transition hover:bg-amber-400 active:scale-[0.98]"
+            disabled={isSaving}
+            onClick={handleConfirm}
+            className="pointer-events-auto w-full max-w-[448px] rounded-full bg-amber-500 py-3.5 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/30 transition hover:bg-amber-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isEditing ? "Save changes" : addToDayLabel(logDate)}
+            {isSaving ? "Saving…" : isEditing ? "Save changes" : addToDayLabel(logDate)}
           </button>
         </div>
       }
     >
       <div className="space-y-5 pb-28">
+        {error && (
+          <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+            {error}
+          </p>
+        )}
+
         {meal.imageUrl ? (
-          <img
-            src={meal.imageUrl}
-            alt={meal.name}
-            className="h-44 w-full rounded-2xl object-cover"
-          />
+          <MealPhotoView src={meal.imageUrl} alt={meal.name} />
         ) : (
           <div className="flex h-32 items-center justify-center rounded-2xl border border-white/10 bg-white/4">
             <span className="text-4xl opacity-30">🍽</span>
@@ -90,6 +108,11 @@ export function LogMealPage({
         {meal.description && (
           <p className="text-sm leading-relaxed text-zinc-400">{meal.description}</p>
         )}
+
+        <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
+          <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition preview</h2>
+          <MacroChips macros={scaled} size="md" />
+        </section>
 
         <section>
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Meal slot</h2>
@@ -136,11 +159,6 @@ export function LogMealPage({
               <PlusIcon />
             </button>
           </div>
-        </section>
-
-        <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
-          <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition preview</h2>
-          <MacroChips macros={scaled} size="md" />
         </section>
       </div>
     </PageShell>

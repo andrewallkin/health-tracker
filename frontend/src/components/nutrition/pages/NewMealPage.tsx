@@ -1,22 +1,30 @@
 import { useState, type ReactNode } from "react";
 import type { NewSavedMealPayload } from "../../../lib/savedMeal";
+import type { SavedMeal } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
 import { MealPhotoPicker } from "../shared/MealPhotoPicker";
 import { PageShell } from "../../layout/PageShell";
 
 interface NewMealPageProps {
+  initialMeal?: SavedMeal;
   onBack: () => void;
-  onSave: (payload: NewSavedMealPayload) => void;
+  onSave: (payload: NewSavedMealPayload) => void | Promise<void>;
+  onDelete?: () => void | Promise<void>;
 }
 
-export function NewMealPage({ onBack, onSave }: NewMealPageProps) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [imageUrl, setImageUrl] = useState<string | undefined>();
-  const [calories, setCalories] = useState("");
-  const [protein, setProtein] = useState("");
-  const [carbs, setCarbs] = useState("");
-  const [fat, setFat] = useState("");
+export function NewMealPage({ initialMeal, onBack, onSave, onDelete }: NewMealPageProps) {
+  const isEditing = Boolean(initialMeal);
+  const [name, setName] = useState(initialMeal?.name ?? "");
+  const [description, setDescription] = useState(initialMeal?.description ?? "");
+  const [imageUrl, setImageUrl] = useState<string | undefined>(initialMeal?.imageUrl);
+  const [calories, setCalories] = useState(String(initialMeal?.calories ?? ""));
+  const [protein, setProtein] = useState(String(initialMeal?.protein ?? ""));
+  const [carbs, setCarbs] = useState(String(initialMeal?.carbs ?? ""));
+  const [fat, setFat] = useState(String(initialMeal?.fat ?? ""));
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const payload: NewSavedMealPayload = {
     name,
@@ -30,25 +38,58 @@ export function NewMealPage({ onBack, onSave }: NewMealPageProps) {
 
   const isValid = name.trim().length > 0 && payload.calories > 0;
 
+  const handleSave = async () => {
+    if (!isValid) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      await onSave(payload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save meal.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await onDelete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete meal.");
+      setShowDeleteConfirm(false);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <PageShell
-      title="New meal"
-      subtitle="Save to your library for quick logging"
+      title={isEditing ? "Edit meal" : "New meal"}
+      subtitle={isEditing ? "Update your saved meal" : "Save to your library for quick logging"}
       onBack={onBack}
       footer={
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center bg-gradient-to-t from-surface via-surface/90 to-transparent px-4 pb-6 pt-10">
           <button
             type="button"
-            disabled={!isValid}
-            onClick={() => onSave(payload)}
+            disabled={!isValid || isSaving || isDeleting}
+            onClick={handleSave}
             className="pointer-events-auto w-full max-w-[448px] rounded-full bg-amber-500 py-3.5 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/30 transition hover:bg-amber-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Save meal
+            {isSaving ? "Saving…" : isEditing ? "Save changes" : "Save meal"}
           </button>
         </div>
       }
     >
       <div className="space-y-5 pb-28">
+        {error && (
+          <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+            {error}
+          </p>
+        )}
+
         <Field label="Name">
           <input
             type="text"
@@ -134,6 +175,46 @@ export function NewMealPage({ onBack, onSave }: NewMealPageProps) {
               size="md"
             />
           </section>
+        )}
+
+        {isEditing && onDelete && (
+          !showDeleteConfirm ? (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2 text-sm font-medium text-rose-400 transition hover:bg-rose-500/10 hover:text-rose-300"
+              >
+                Delete saved meal
+              </button>
+            </div>
+          ) : (
+            <section className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-4">
+              <div className="space-y-3">
+                <p className="text-center text-sm text-zinc-300">
+                  Delete this meal? Past log entries will stay but will no longer link to it.
+                </p>
+                <div className="flex justify-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={handleDelete}
+                    className="rounded-xl bg-rose-500/20 px-3 py-2 text-sm font-medium text-rose-300 transition hover:bg-rose-500/30 disabled:opacity-50"
+                  >
+                    {isDeleting ? "Deleting…" : "Confirm delete"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="rounded-xl border border-white/10 px-3 py-2 text-sm text-zinc-400 transition hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </section>
+          )
         )}
       </div>
     </PageShell>

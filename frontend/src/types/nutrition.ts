@@ -30,6 +30,7 @@ export interface LogEntry {
   carbs: number;
   fat: number;
   savedMealId?: string;
+  imageUrl?: string;
 }
 
 export interface MacroTotals {
@@ -80,6 +81,7 @@ export type AppView =
   | { type: "add-food" }
   | { type: "saved-meals" }
   | { type: "new-meal" }
+  | { type: "edit-meal"; mealId: string }
   | { type: "describe-food" }
   | { type: "estimate-review" }
   | { type: "quick-log"; entryId?: string }

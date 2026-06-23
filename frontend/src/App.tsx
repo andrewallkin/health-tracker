@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
-import { dailyGoal } from "./data/mock";
 import {
   createLogEntry,
   createSavedMeal,
   deleteLogEntry,
+  deleteSavedMeal,
+  fetchAiSettings,
   fetchEntriesForDate,
   fetchGoals,
   fetchSavedMeals,
   updateAiSettings,
   updateGoals,
   updateLogEntry,
+  updateSavedMeal,
 } from "./lib/api";
 import { toDateKey } from "./lib/dates";
 import { isFutureDate } from "./lib/logLabels";
@@ -43,6 +45,7 @@ import { LogMealPage } from "./components/nutrition/pages/LogMealPage";
 import { NewMealPage } from "./components/nutrition/pages/NewMealPage";
 import { QuickLogPage } from "./components/nutrition/pages/QuickLogPage";
 import { SavedMealsPage } from "./components/nutrition/pages/SavedMealsPage";
+import { PageShell } from "./components/layout/PageShell";
 
 interface EstimateSession {
   input: DescribeFoodInput;
@@ -57,6 +60,7 @@ function reviewedToQuickLog(payload: ReviewedFoodPayload): QuickLogPayload {
     protein: payload.protein,
     carbs: payload.carbs,
     fat: payload.fat,
+    imageUrl: payload.imageUrl,
   };
 }
 
@@ -78,18 +82,24 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(() => toDateKey());
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>("day");
   const [entries, setEntries] = useState<LogEntry[]>([]);
-  const [goal, setGoal] = useState<DailyGoal>(dailyGoal);
+  const [entriesVersion, setEntriesVersion] = useState(0);
+  const [goal, setGoal] = useState<DailyGoal | null>(null);
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
+  const [hasApiKey, setHasApiKey] = useState(false);
   const [estimateSession, setEstimateSession] = useState<EstimateSession | null>(null);
   const [loadingNutrition, setLoadingNutrition] = useState(true);
+  const [deleteEntryError, setDeleteEntryError] = useState<string | null>(null);
+
+  const bumpEntriesVersion = () => setEntriesVersion((v) => v + 1);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchGoals(), fetchSavedMeals()])
-      .then(([loadedGoal, meals]) => {
+    Promise.all([fetchGoals(), fetchSavedMeals(), fetchAiSettings()])
+      .then(([loadedGoal, meals, ai]) => {
         if (!cancelled) {
           setGoal(loadedGoal);
           setSavedMeals(meals);
+          setHasApiKey(ai.hasApiKey);
         }
       })
       .catch(console.error)
@@ -111,7 +121,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedDate]);
+  }, [selectedDate, entriesVersion]);
 
   const changeDate = (dateKey: string) => {
     if (isFutureDate(dateKey)) return;
@@ -129,9 +139,11 @@ function App() {
     setDashboardTab("day");
   };
 
+  const openSettings = () => setView({ type: "goals-settings" });
+
   const addSavedMealEntry = async (payload: LogMealPayload, mealId: string) => {
     const meal = findSavedMeal(savedMeals, mealId);
-    if (!meal) return;
+    if (!meal) throw new Error("Saved meal not found.");
     const built = buildLogEntryFromSavedMeal(meal, payload);
     const created = await createLogEntry({
       logDate: selectedDate,
@@ -144,8 +156,10 @@ function App() {
       carbs: built.carbs,
       fat: built.fat,
       savedMealId: built.savedMealId,
+      imageUrl: built.imageUrl,
     });
     setEntries((prev) => [...prev, created]);
+    bumpEntriesVersion();
   };
 
   const updateSavedMealEntry = async (
@@ -154,9 +168,9 @@ function App() {
     mealId: string,
   ) => {
     const meal = findSavedMeal(savedMeals, mealId);
-    if (!meal) return;
+    if (!meal) throw new Error("Saved meal not found.");
     const existing = entries.find((entry) => entry.id === entryId);
-    if (!existing) return;
+    if (!existing) throw new Error("Entry not found.");
     const built = buildLogEntryFromSavedMeal(meal, payload);
     const updated = await updateLogEntry(entryId, {
       name: built.name,
@@ -168,8 +182,10 @@ function App() {
       carbs: built.carbs,
       fat: built.fat,
       savedMealId: built.savedMealId,
+      imageUrl: built.imageUrl,
     });
     setEntries((prev) => prev.map((entry) => (entry.id === entryId ? updated : entry)));
+    bumpEntriesVersion();
   };
 
   const addQuickLogEntry = async (payload: QuickLogPayload) => {
@@ -184,13 +200,15 @@ function App() {
       protein: built.protein,
       carbs: built.carbs,
       fat: built.fat,
+      imageUrl: built.imageUrl,
     });
     setEntries((prev) => [...prev, created]);
+    bumpEntriesVersion();
   };
 
   const updateQuickLogEntryById = async (entryId: string, payload: QuickLogPayload) => {
     const existing = entries.find((entry) => entry.id === entryId);
-    if (!existing) return;
+    if (!existing) throw new Error("Entry not found.");
     const built = updateQuickLogEntry(existing, payload);
     const updated = await updateLogEntry(entryId, {
       name: built.name,
@@ -201,6 +219,7 @@ function App() {
       fat: built.fat,
     });
     setEntries((prev) => prev.map((entry) => (entry.id === entryId ? updated : entry)));
+    bumpEntriesVersion();
   };
 
   const addSavedMeal = async (payload: NewSavedMealPayload) => {
@@ -208,26 +227,55 @@ function App() {
     setSavedMeals((prev) => [...prev, created]);
   };
 
+  const editSavedMeal = async (mealId: string, payload: NewSavedMealPayload) => {
+    const updated = await updateSavedMeal(mealId, payload);
+    setSavedMeals((prev) => prev.map((meal) => (meal.id === mealId ? updated : meal)));
+  };
+
+  const removeSavedMeal = async (mealId: string) => {
+    await deleteSavedMeal(mealId);
+    setSavedMeals((prev) => prev.filter((meal) => meal.id !== mealId));
+    setEntries((prev) =>
+      prev.map((entry) =>
+        entry.savedMealId === mealId ? { ...entry, savedMealId: undefined } : entry,
+      ),
+    );
+  };
+
   const handleDeleteEntry = async (id: string) => {
-    await deleteLogEntry(id);
-    setEntries((prev) => prev.filter((entry) => entry.id !== id));
+    setDeleteEntryError(null);
+    try {
+      await deleteLogEntry(id);
+      setEntries((prev) => prev.filter((entry) => entry.id !== id));
+      bumpEntriesVersion();
+    } catch (err) {
+      setDeleteEntryError(err instanceof Error ? err.message : "Could not delete entry.");
+    }
   };
 
   const handleSaveSettings = async ({ goal: updatedGoal, ai }: SettingsSavePayload) => {
-    const [savedGoal] = await Promise.all([
+    const [savedGoal, savedAi] = await Promise.all([
       updateGoals(updatedGoal),
       updateAiSettings(ai),
     ]);
     setGoal(savedGoal);
+    setHasApiKey(savedAi.hasApiKey);
     setView({ type: "today" });
   };
 
   if (view.type === "goals-settings") {
+    if (!goal) {
+      return (
+        <p className="px-4 py-8 text-center text-sm text-zinc-500">Loading…</p>
+      );
+    }
+
     return (
       <GoalsSettingsPage
         initialGoal={goal}
         onBack={() => setView({ type: "today" })}
         onSave={handleSaveSettings}
+        onApiKeyChange={setHasApiKey}
       />
     );
   }
@@ -235,7 +283,9 @@ function App() {
   if (view.type === "add-food") {
     return (
       <AddFoodHubPage
+        hasApiKey={hasApiKey}
         onBack={() => setView({ type: "today" })}
+        onOpenSettings={openSettings}
         onSelect={(option) => {
           if (option === "saved-meals") {
             setView({ type: "saved-meals" });
@@ -253,10 +303,12 @@ function App() {
     return (
       <DescribeFoodPage
         initialInput={estimateSession?.input}
+        hasApiKey={hasApiKey}
         onBack={() => {
           setEstimateSession(null);
           setView({ type: "add-food" });
         }}
+        onOpenSettings={openSettings}
         onEstimated={(input, estimate) => {
           setEstimateSession({ input, estimate });
           setView({ type: "estimate-review" });
@@ -269,7 +321,9 @@ function App() {
     if (!estimateSession) {
       return (
         <DescribeFoodPage
+          hasApiKey={hasApiKey}
           onBack={() => setView({ type: "add-food" })}
+          onOpenSettings={openSettings}
           onEstimated={(input, estimate) => {
             setEstimateSession({ input, estimate });
             setView({ type: "estimate-review" });
@@ -301,6 +355,7 @@ function App() {
         onBack={() => setView({ type: "add-food" })}
         onCreateNew={() => setView({ type: "new-meal" })}
         onSelectMeal={(mealId) => setView({ type: "log-meal", mealId })}
+        onEditMeal={(mealId) => setView({ type: "edit-meal", mealId })}
       />
     );
   }
@@ -311,6 +366,32 @@ function App() {
         onBack={() => setView({ type: "saved-meals" })}
         onSave={async (payload) => {
           await addSavedMeal(payload);
+          setView({ type: "saved-meals" });
+        }}
+      />
+    );
+  }
+
+  if (view.type === "edit-meal") {
+    const meal = findSavedMeal(savedMeals, view.mealId);
+    if (!meal) {
+      return (
+        <PageShell title="Meal not found" onBack={() => setView({ type: "saved-meals" })}>
+          <p className="text-sm text-zinc-500">This saved meal could not be loaded.</p>
+        </PageShell>
+      );
+    }
+
+    return (
+      <NewMealPage
+        initialMeal={meal}
+        onBack={() => setView({ type: "saved-meals" })}
+        onSave={async (payload) => {
+          await editSavedMeal(view.mealId, payload);
+          setView({ type: "saved-meals" });
+        }}
+        onDelete={async () => {
+          await removeSavedMeal(view.mealId);
           setView({ type: "saved-meals" });
         }}
       />
@@ -372,52 +453,62 @@ function App() {
     );
   }
 
+  const nutritionReady = !loadingNutrition && goal !== null;
+
   return (
     <>
-      <AppTopBar section={appSection} onSectionChange={switchSection} />
+      <AppTopBar
+        section={appSection}
+        onSectionChange={switchSection}
+        onOpenSettings={openSettings}
+      />
 
       <div className={TOP_BAR_OFFSET}>
-        {appSection === "nutrition" && dashboardTab === "day" && (
-          loadingNutrition ? (
-            <p className="px-4 py-8 text-center text-sm text-zinc-500">Loading…</p>
-          ) : (
-            <Dashboard
-              selectedDate={selectedDate}
-              entries={entries}
-              goal={goal}
-              onDateChange={changeDate}
-              onOpenSettings={() => setView({ type: "goals-settings" })}
-              onDeleteEntry={handleDeleteEntry}
-              onEditEntry={(id) => {
-                const entry = entries.find((e) => e.id === id);
-                if (!entry) return;
-                if (entry.savedMealId) {
-                  setView({ type: "log-meal", mealId: entry.savedMealId, entryId: id });
-                } else {
-                  setView({ type: "quick-log", entryId: id });
-                }
-              }}
-            />
-          )
+        {appSection === "nutrition" && !nutritionReady && (
+          <p className="px-4 py-8 text-center text-sm text-zinc-500">Loading…</p>
         )}
 
-        {appSection === "nutrition" && dashboardTab === "week" && (
-          <WeekView
-            anchorDate={selectedDate}
+        {appSection === "nutrition" && nutritionReady && dashboardTab === "day" && (
+          <Dashboard
+            selectedDate={selectedDate}
+            entries={entries}
             goal={goal}
-            onAnchorChange={changeDate}
-            onSelectDate={openDay}
-            onOpenSettings={() => setView({ type: "goals-settings" })}
+            deleteError={deleteEntryError}
+            onDismissDeleteError={() => setDeleteEntryError(null)}
+            onDateChange={changeDate}
+            onDeleteEntry={handleDeleteEntry}
+            onEditEntry={(id) => {
+              const entry = entries.find((e) => e.id === id);
+              if (!entry) return;
+              if (entry.savedMealId) {
+                setView({ type: "log-meal", mealId: entry.savedMealId, entryId: id });
+              } else {
+                setView({ type: "quick-log", entryId: id });
+              }
+            }}
+            onAddFood={
+              !isFutureDate(selectedDate) ? () => setView({ type: "add-food" }) : undefined
+            }
           />
         )}
 
-        {appSection === "nutrition" && dashboardTab === "month" && (
+        {appSection === "nutrition" && nutritionReady && dashboardTab === "week" && (
+          <WeekView
+            anchorDate={selectedDate}
+            goal={goal}
+            entriesVersion={entriesVersion}
+            onAnchorChange={changeDate}
+            onSelectDate={openDay}
+          />
+        )}
+
+        {appSection === "nutrition" && nutritionReady && dashboardTab === "month" && (
           <MonthView
             anchorDate={selectedDate}
             goal={goal}
+            entriesVersion={entriesVersion}
             onAnchorChange={changeDate}
             onSelectDate={openDay}
-            onOpenSettings={() => setView({ type: "goals-settings" })}
           />
         )}
 
@@ -442,15 +533,7 @@ function App() {
         )}
       </div>
 
-      <HomeFooter
-        active={dashboardTab}
-        onChange={setDashboardTab}
-        onAddFood={
-          appSection === "nutrition" && !isFutureDate(selectedDate)
-            ? () => setView({ type: "add-food" })
-            : undefined
-        }
-      />
+      <HomeFooter active={dashboardTab} onChange={setDashboardTab} />
     </>
   );
 }

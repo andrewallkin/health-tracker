@@ -15,6 +15,7 @@ class Settings:
     database_url: str
     encryption_key: str
     cors_origins: list[str]
+    meal_photos_dir: Path
 
     def __init__(self) -> None:
         self.database_url = os.environ.get(
@@ -24,6 +25,10 @@ class Settings:
         self.encryption_key = os.environ.get("SETTINGS_ENCRYPTION_KEY", "")
         origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173")
         self.cors_origins = [o.strip() for o in origins.split(",") if o.strip()]
+        photos_dir = os.environ.get("MEAL_PHOTOS_DIR", "data/meal-photos")
+        self.meal_photos_dir = Path(photos_dir)
+        if not self.meal_photos_dir.is_absolute():
+            self.meal_photos_dir = REPO_ROOT / self.meal_photos_dir
 
 
 @lru_cache
