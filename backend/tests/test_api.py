@@ -3,6 +3,7 @@ from __future__ import annotations
 from cryptography.fernet import Fernet
 
 from backend.crypto import decrypt_api_key, encrypt_api_key, mask_api_key
+from backend.tests.conftest import register_user
 
 
 def test_encrypt_decrypt_round_trip(monkeypatch):
@@ -20,22 +21,32 @@ def test_encrypt_decrypt_round_trip(monkeypatch):
     get_settings.cache_clear()
 
 
-def test_goals_crud(client):
-    response = client.get("/api/goals")
+def test_protected_routes_require_auth(client):
+    assert client.get("/api/goals").status_code == 401
+    assert client.get("/api/meals").status_code == 401
+    assert client.get("/api/entries").status_code == 401
+    assert client.get("/api/settings/ai").status_code == 401
+    assert client.post("/api/estimate", json={"note": "shake"}).status_code == 401
+
+
+def test_goals_crud(client, auth_headers):
+    response = client.get("/api/goals", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["calories"] == 2200
 
     response = client.put(
         "/api/goals",
+        headers=auth_headers,
         json={"calories": 2000, "protein": 150, "carbs": 200, "fat": 65},
     )
     assert response.status_code == 200
     assert response.json()["calories"] == 2000
 
 
-def test_meals_and_entries(client):
+def test_meals_and_entries(client, auth_headers):
     meal_response = client.post(
         "/api/meals",
+        headers=auth_headers,
         json={
             "name": "Test meal",
             "calories": 400,
@@ -49,6 +60,7 @@ def test_meals_and_entries(client):
 
     entry_response = client.post(
         "/api/entries",
+        headers=auth_headers,
         json={
             "logDate": "2026-06-01",
             "name": "Test meal",
@@ -65,12 +77,13 @@ def test_meals_and_entries(client):
     assert entry_response.status_code == 201
     entry_id = entry_response.json()["id"]
 
-    list_response = client.get("/api/entries", params={"date": "2026-06-01"})
+    list_response = client.get("/api/entries", headers=auth_headers, params={"date": "2026-06-01"})
     assert list_response.status_code == 200
     assert len(list_response.json()) == 1
 
     range_response = client.get(
         "/api/entries",
+        headers=auth_headers,
         params={"from": "2026-06-01", "to": "2026-06-07"},
     )
     assert range_response.status_code == 200
@@ -78,18 +91,48 @@ def test_meals_and_entries(client):
 
     patch_response = client.patch(
         f"/api/entries/{entry_id}",
+        headers=auth_headers,
         json={"servings": 2, "calories": 800},
     )
     assert patch_response.status_code == 200
     assert patch_response.json()["calories"] == 800
 
-    delete_response = client.delete(f"/api/entries/{entry_id}")
+    delete_response = client.delete(f"/api/entries/{entry_id}", headers=auth_headers)
     assert delete_response.status_code == 204
 
 
-def test_entry_image_url_and_saved_meal_fallback(client):
+def test_user_data_isolation(client):
+    headers_a = register_user(client, "a@example.com")
+    headers_b = register_user(client, "b@example.com")
+
     meal_response = client.post(
         "/api/meals",
+        headers=headers_a,
+        json={
+            "name": "Private meal",
+            "calories": 400,
+            "protein": 30,
+            "carbs": 40,
+            "fat": 10,
+        },
+    )
+    assert meal_response.status_code == 201
+    meal_id = meal_response.json()["id"]
+
+    assert client.get("/api/meals", headers=headers_b).json() == []
+
+    patch_other_user = client.patch(
+        f"/api/meals/{meal_id}",
+        headers=headers_b,
+        json={"name": "Hacked"},
+    )
+    assert patch_other_user.status_code == 404
+
+
+def test_entry_image_url_and_saved_meal_fallback(client, auth_headers):
+    meal_response = client.post(
+        "/api/meals",
+        headers=auth_headers,
         json={
             "name": "Photo meal",
             "imageUrl": "/api/photos/test-meal.jpg",
@@ -104,6 +147,7 @@ def test_entry_image_url_and_saved_meal_fallback(client):
 
     direct_response = client.post(
         "/api/entries",
+        headers=auth_headers,
         json={
             "logDate": "2026-06-02",
             "name": "AI lunch",
@@ -122,6 +166,7 @@ def test_entry_image_url_and_saved_meal_fallback(client):
 
     linked_response = client.post(
         "/api/entries",
+        headers=auth_headers,
         json={
             "logDate": "2026-06-02",
             "name": "Photo meal",
@@ -139,9 +184,10 @@ def test_entry_image_url_and_saved_meal_fallback(client):
     assert linked_response.json()["imageUrl"] == "/api/photos/test-meal.jpg"
 
 
-def test_meal_update_and_delete(client):
+def test_meal_update_and_delete(client, auth_headers):
     create_response = client.post(
         "/api/meals",
+        headers=auth_headers,
         json={
             "name": "Original meal",
             "calories": 400,
@@ -155,6 +201,7 @@ def test_meal_update_and_delete(client):
 
     patch_response = client.patch(
         f"/api/meals/{meal_id}",
+        headers=auth_headers,
         json={"name": "Updated meal", "calories": 450},
     )
     assert patch_response.status_code == 200
@@ -164,6 +211,7 @@ def test_meal_update_and_delete(client):
 
     entry_response = client.post(
         "/api/entries",
+        headers=auth_headers,
         json={
             "logDate": "2026-06-02",
             "name": "Updated meal",
@@ -180,43 +228,53 @@ def test_meal_update_and_delete(client):
     assert entry_response.status_code == 201
     entry_id = entry_response.json()["id"]
 
-    delete_response = client.delete(f"/api/meals/{meal_id}")
+    delete_response = client.delete(f"/api/meals/{meal_id}", headers=auth_headers)
     assert delete_response.status_code == 204
 
-    entry_after = client.get("/api/entries", params={"date": "2026-06-02"}).json()[0]
+    entry_after = client.get("/api/entries", headers=auth_headers, params={"date": "2026-06-02"}).json()[0]
     assert entry_after["id"] == entry_id
     assert entry_after["savedMealId"] is None
 
 
-def test_photo_upload(client):
+def test_photo_upload(client, auth_headers):
     from backend.config import get_settings
 
     response = client.post(
         "/api/photos",
+        headers=auth_headers,
         files={"file": ("meal.jpg", b"fake-jpeg-bytes", "image/jpeg")},
     )
     assert response.status_code == 201
     url = response.json()["url"]
     assert url.startswith("/api/photos/")
 
-    filename = url.removeprefix("/api/photos/")
-    assert (get_settings().meal_photos_dir / filename).is_file()
+    user_id = url.split("/")[3]
+    filename = url.split("/")[4]
+    assert (get_settings().meal_photos_dir / user_id / filename).is_file()
+
+    get_response = client.get(url, headers=auth_headers)
+    assert get_response.status_code == 200
 
 
-def test_ai_settings_and_estimate_without_key(client):
-    estimate_response = client.post("/api/estimate", json={"note": "protein shake"})
+def test_ai_settings_and_estimate_without_key(client, auth_headers):
+    estimate_response = client.post(
+        "/api/estimate",
+        headers=auth_headers,
+        json={"note": "protein shake"},
+    )
     assert estimate_response.status_code == 422
 
-    settings_response = client.get("/api/settings/ai")
+    settings_response = client.get("/api/settings/ai", headers=auth_headers)
     assert settings_response.status_code == 200
     assert settings_response.json()["hasApiKey"] is False
 
-    models_response = client.get("/api/settings/models")
+    models_response = client.get("/api/settings/models", headers=auth_headers)
     assert models_response.status_code == 200
     assert len(models_response.json()["models"]) >= 2
 
     update_response = client.put(
         "/api/settings/ai",
+        headers=auth_headers,
         json={
             "apiKey": "sk-test-key-1234567890",
             "textModel": "gpt-5-nano",
@@ -230,6 +288,7 @@ def test_ai_settings_and_estimate_without_key(client):
 
     clear_response = client.put(
         "/api/settings/ai",
+        headers=auth_headers,
         json={
             "clearApiKey": True,
             "textModel": "gpt-5-nano",

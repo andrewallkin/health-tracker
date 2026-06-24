@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from ...crypto import encrypt_api_key
 from ...database import get_db
+from ...db_models import UserRow
+from ..deps import get_current_user
 from ..mappers import app_settings_to_schema, get_or_create_app_settings
 from ..schemas import AiSettings, AiSettingsUpdate, ModelOption, ModelsResponse
 
@@ -13,7 +15,6 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 # Chat Completions models with strict JSON schema (Structured Outputs) support.
 # Vision-capable models are listed for photo estimates; text-only picks omit vision.
 MODEL_OPTIONS: list[ModelOption] = [
-    # Text-only estimates (structured outputs, cost-optimized)
     ModelOption(
         id="gpt-5-nano",
         label="GPT-5 Nano",
@@ -36,7 +37,6 @@ MODEL_OPTIONS: list[ModelOption] = [
     ModelOption(id="gpt-5-pro", label="GPT-5 Pro", supportsVision=False),
     ModelOption(id="gpt-5.5", label="GPT-5.5", supportsVision=False),
     ModelOption(id="gpt-5.5-pro", label="GPT-5.5 Pro", supportsVision=False),
-    # Photo estimates (structured outputs + vision)
     ModelOption(
         id="gpt-5-mini",
         label="GPT-5 Mini",
@@ -64,18 +64,25 @@ MODEL_OPTIONS: list[ModelOption] = [
 
 
 @router.get("/models", response_model=ModelsResponse)
-def list_models() -> ModelsResponse:
+def list_models(_user: UserRow = Depends(get_current_user)) -> ModelsResponse:
     return ModelsResponse(models=MODEL_OPTIONS)
 
 
 @router.get("/ai", response_model=AiSettings)
-def get_ai_settings(db: Session = Depends(get_db)) -> AiSettings:
-    return app_settings_to_schema(get_or_create_app_settings(db))
+def get_ai_settings(
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_current_user),
+) -> AiSettings:
+    return app_settings_to_schema(get_or_create_app_settings(db, user.id))
 
 
 @router.put("/ai", response_model=AiSettings)
-def update_ai_settings(payload: AiSettingsUpdate, db: Session = Depends(get_db)) -> AiSettings:
-    row = get_or_create_app_settings(db)
+def update_ai_settings(
+    payload: AiSettingsUpdate,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_current_user),
+) -> AiSettings:
+    row = get_or_create_app_settings(db, user.id)
     row.text_model = payload.textModel.strip()
     row.image_model = payload.imageModel.strip()
     if payload.clearApiKey:

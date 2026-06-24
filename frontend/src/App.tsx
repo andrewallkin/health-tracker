@@ -50,6 +50,7 @@ import { NewMealPage } from "./components/nutrition/pages/NewMealPage";
 import { QuickLogPage } from "./components/nutrition/pages/QuickLogPage";
 import { SavedMealsPage } from "./components/nutrition/pages/SavedMealsPage";
 import { PageShell } from "./components/layout/PageShell";
+import { useAuth } from "./context/AuthContext";
 
 interface EstimateSession {
   input: DescribeFoodInput;
@@ -81,6 +82,7 @@ function reviewedToSavedMeal(payload: ReviewedFoodPayload): NewSavedMealPayload 
 }
 
 function App() {
+  const { logout } = useAuth();
   const [view, setView] = useState<AppView>({ type: "today" });
   const [appSection, setAppSection] = useState<AppSection>("nutrition");
   const [selectedDate, setSelectedDate] = useState(() => toDateKey());
@@ -465,6 +467,7 @@ function App() {
         section={appSection}
         onSectionChange={switchSection}
         onOpenSettings={openSettings}
+        onLogout={() => void logout()}
       />
 
       <div className={TOP_BAR_OFFSET}>

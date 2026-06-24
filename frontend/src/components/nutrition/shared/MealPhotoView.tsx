@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { useAuthenticatedImageSrc } from "../../../lib/authenticatedImage";
+
 interface MealPhotoViewProps {
   src: string;
   alt: string;
@@ -9,6 +11,7 @@ interface MealPhotoViewProps {
 
 export function MealPhotoView({ src, alt, className, size = "full" }: MealPhotoViewProps) {
   const [expanded, setExpanded] = useState(false);
+  const resolvedSrc = useAuthenticatedImageSrc(src);
 
   useEffect(() => {
     if (!expanded) return;
@@ -25,6 +28,10 @@ export function MealPhotoView({ src, alt, className, size = "full" }: MealPhotoV
 
   const isThumbnail = size === "thumbnail";
 
+  if (!resolvedSrc) {
+    return null;
+  }
+
   return (
     <>
       <button
@@ -38,7 +45,7 @@ export function MealPhotoView({ src, alt, className, size = "full" }: MealPhotoV
         aria-label="View full photo"
       >
         <img
-          src={src}
+          src={resolvedSrc}
           alt={alt}
           className={
             isThumbnail
@@ -70,7 +77,7 @@ export function MealPhotoView({ src, alt, className, size = "full" }: MealPhotoV
             <CloseIcon />
           </button>
           <img
-            src={src}
+            src={resolvedSrc}
             alt={alt}
             className="max-h-full max-w-full object-contain"
             onClick={(e) => e.stopPropagation()}

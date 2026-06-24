@@ -9,11 +9,15 @@ dependencies = [
     "pillow",
     "pillow-heif",
     "pydantic",
+    "email-validator",
     "fastapi",
     "python-multipart",
     "uvicorn[standard]",
     "sqlalchemy",
     "cryptography",
+    "python-jose[cryptography]",
+    "passlib[bcrypt]",
+    "bcrypt>=4.0.1,<4.1",
 ]
 
 [tool.uv]

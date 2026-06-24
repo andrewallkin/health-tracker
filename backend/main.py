@@ -4,9 +4,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
-from .api.routes import entries, estimate, goals, meals, photos
+from .api.routes import auth, entries, estimate, goals, meals, photos, users
 from .api.routes import settings as settings_routes
 from .config import get_settings
 from .database import init_db
@@ -32,17 +31,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 app.include_router(goals.router, prefix="/api")
 app.include_router(meals.router, prefix="/api")
 app.include_router(entries.router, prefix="/api")
 app.include_router(settings_routes.router, prefix="/api")
 app.include_router(estimate.router, prefix="/api")
 app.include_router(photos.router, prefix="/api")
-app.mount(
-    "/api/photos",
-    StaticFiles(directory=str(app_settings.meal_photos_dir)),
-    name="meal-photos",
-)
 
 
 @app.get("/health")

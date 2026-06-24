@@ -4,6 +4,7 @@ interface AppTopBarProps {
   section: AppSection;
   onSectionChange: (section: AppSection) => void;
   onOpenSettings?: () => void;
+  onLogout?: () => void;
 }
 
 const SECTIONS: { id: AppSection; label: string }[] = [
@@ -11,7 +12,7 @@ const SECTIONS: { id: AppSection; label: string }[] = [
   { id: "health", label: "Health" },
 ];
 
-export function AppTopBar({ section, onSectionChange, onOpenSettings }: AppTopBarProps) {
+export function AppTopBar({ section, onSectionChange, onOpenSettings, onLogout }: AppTopBarProps) {
   return (
     <header className="fixed inset-x-0 top-0 z-30 border-b border-white/10 bg-surface/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-[480px] items-center gap-2 px-4 py-3">
@@ -45,8 +46,29 @@ export function AppTopBar({ section, onSectionChange, onOpenSettings }: AppTopBa
             <GearIcon />
           </button>
         )}
+
+        {onLogout && (
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label="Sign out"
+            className="shrink-0 rounded-xl border border-white/10 bg-white/5 p-2.5 text-zinc-400 transition hover:bg-white/10 hover:text-zinc-200"
+          >
+            <SignOutIcon />
+          </button>
+        )}
       </div>
     </header>
+  );
+}
+
+function SignOutIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
   );
 }
 

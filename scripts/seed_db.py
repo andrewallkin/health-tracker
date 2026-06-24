@@ -12,12 +12,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+from backend.auth import get_password_hash  # noqa: E402
 from backend.database import Base, SessionLocal, engine, init_db  # noqa: E402
 from backend.db_models import (  # noqa: E402
     AppSettingsRow,
     DailyGoalRow,
     LogEntryRow,
     SavedMealRow,
+    UserRow,
 )
 
 DAILY_GOAL = {"calories": 2200, "protein": 180, "carbs": 220, "fat": 70}
@@ -183,18 +185,27 @@ def reset_db() -> None:
     init_db()
 
 
-def seed() -> None:
+def seed(email: str = "demo@example.com", password: str = "password123") -> None:
     today = date.today()
     db = SessionLocal()
     try:
-        db.add(DailyGoalRow(id=1, **DAILY_GOAL))
+        user = db.query(UserRow).filter(UserRow.email == email.strip().lower()).first()
+        if user is None:
+            user = UserRow(
+                email=email.strip().lower(),
+                hashed_password=get_password_hash(password),
+            )
+            db.add(user)
+            db.flush()
+
+        db.add(DailyGoalRow(user_id=user.id, **DAILY_GOAL))
 
         for meal in SAVED_MEALS:
-            db.add(SavedMealRow(**meal))
+            db.add(SavedMealRow(user_id=user.id, **meal))
 
         db.add(
             AppSettingsRow(
-                id=1,
+                user_id=user.id,
                 openai_api_key_encrypted=None,
                 text_model="gpt-5-nano",
                 image_model="gpt-5-mini",
@@ -205,6 +216,7 @@ def seed() -> None:
             db.add(
                 LogEntryRow(
                     id=str(uuid.uuid4()),
+                    user_id=user.id,
                     log_date=today.isoformat(),
                     **entry,
                 )
@@ -217,6 +229,7 @@ def seed() -> None:
                 db.add(
                     LogEntryRow(
                         id=str(uuid.uuid4()),
+                        user_id=user.id,
                         log_date=log_date,
                         name=name,
                         slot=slot,
@@ -231,7 +244,10 @@ def seed() -> None:
                 )
 
         db.commit()
-        print(f"Seeded daily goal, {len(SAVED_MEALS)} saved meals, and log entries through {today.isoformat()}")
+        print(
+            f"Seeded user {user.email} with daily goal, {len(SAVED_MEALS)} saved meals, "
+            f"and log entries through {today.isoformat()}"
+        )
     finally:
         db.close()
 
@@ -239,6 +255,8 @@ def seed() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed nutrition database with dummy data")
     parser.add_argument("--reset", action="store_true", help="Drop and recreate all tables before seeding")
+    parser.add_argument("--email", default="demo@example.com", help="Seed data owner email")
+    parser.add_argument("--password", default="password123", help="Seed data owner password")
     args = parser.parse_args()
 
     if args.reset:
@@ -246,7 +264,7 @@ def main() -> None:
     else:
         init_db()
 
-    seed()
+    seed(email=args.email, password=args.password)
 
 
 if __name__ == "__main__":

@@ -7,20 +7,20 @@ from ..db_models import AppSettingsRow, DailyGoalRow, LogEntryRow, SavedMealRow
 from .schemas import AiSettings, DailyGoal, LogEntry, SavedMeal
 
 
-def get_or_create_daily_goal(db: Session) -> DailyGoalRow:
-    row = db.get(DailyGoalRow, 1)
+def get_or_create_daily_goal(db: Session, user_id: str) -> DailyGoalRow:
+    row = db.query(DailyGoalRow).filter(DailyGoalRow.user_id == user_id).first()
     if row is None:
-        row = DailyGoalRow(id=1, calories=2200, protein=180, carbs=220, fat=70)
+        row = DailyGoalRow(user_id=user_id, calories=2200, protein=180, carbs=220, fat=70)
         db.add(row)
         db.commit()
         db.refresh(row)
     return row
 
 
-def get_or_create_app_settings(db: Session) -> AppSettingsRow:
-    row = db.get(AppSettingsRow, 1)
+def get_or_create_app_settings(db: Session, user_id: str) -> AppSettingsRow:
+    row = db.query(AppSettingsRow).filter(AppSettingsRow.user_id == user_id).first()
     if row is None:
-        row = AppSettingsRow(id=1, text_model="gpt-5-nano", image_model="gpt-5-mini")
+        row = AppSettingsRow(user_id=user_id, text_model="gpt-5-nano", image_model="gpt-5-mini")
         db.add(row)
         db.commit()
         db.refresh(row)
