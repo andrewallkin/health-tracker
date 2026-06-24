@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 
 from ..crypto import decrypt_api_key, mask_api_key
 from ..db_models import AppSettingsRow, DailyGoalRow, LogEntryRow, SavedMealRow
+from ..gcs import GCSService
+from .photo_storage import resolve_image_url_for_response
 from .schemas import AiSettings, DailyGoal, LogEntry, SavedMeal
 
 
@@ -36,12 +38,12 @@ def daily_goal_to_schema(row: DailyGoalRow) -> DailyGoal:
     )
 
 
-def saved_meal_to_schema(row: SavedMealRow) -> SavedMeal:
+def saved_meal_to_schema(row: SavedMealRow, gcs: GCSService) -> SavedMeal:
     return SavedMeal(
         id=row.id,
         name=row.name,
         description=row.description,
-        imageUrl=row.image_url,
+        imageUrl=resolve_image_url_for_response(row.image_url, gcs),
         calories=row.calories,
         protein=row.protein,
         carbs=row.carbs,
@@ -49,7 +51,7 @@ def saved_meal_to_schema(row: SavedMealRow) -> SavedMeal:
     )
 
 
-def log_entry_to_schema(row: LogEntryRow) -> LogEntry:
+def log_entry_to_schema(row: LogEntryRow, gcs: GCSService) -> LogEntry:
     image_url = row.image_url
     if not image_url and row.saved_meal is not None:
         image_url = row.saved_meal.image_url
@@ -66,7 +68,7 @@ def log_entry_to_schema(row: LogEntryRow) -> LogEntry:
         carbs=row.carbs,
         fat=row.fat,
         savedMealId=row.saved_meal_id,
-        imageUrl=image_url,
+        imageUrl=resolve_image_url_for_response(image_url, gcs),
     )
 
 

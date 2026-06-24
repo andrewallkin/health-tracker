@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ...database import get_db
 from ...db_models import LogEntryRow, UserRow
+from ...gcs import GCSService, get_gcs_service
 from ..deps import get_current_user
 from ..mappers import log_entry_to_schema
 from ..ownership import get_owned_entry, get_owned_meal
@@ -22,6 +23,7 @@ def list_entries(
     to_date: str | None = Query(default=None, alias="to"),
     db: Session = Depends(get_db),
     user: UserRow = Depends(get_current_user),
+    gcs: GCSService = Depends(get_gcs_service),
 ) -> list[LogEntry]:
     query = (
         db.query(LogEntryRow)
@@ -40,7 +42,7 @@ def list_entries(
         raise HTTPException(status_code=400, detail="Provide both 'from' and 'to' for date ranges")
 
     rows = query.order_by(LogEntryRow.log_date, LogEntryRow.time).all()
-    return [log_entry_to_schema(row) for row in rows]
+    return [log_entry_to_schema(row, gcs) for row in rows]
 
 
 def _validate_saved_meal_id(db: Session, user_id: str, saved_meal_id: str | None) -> None:
@@ -55,6 +57,7 @@ def create_entry(
     payload: LogEntryCreate,
     db: Session = Depends(get_db),
     user: UserRow = Depends(get_current_user),
+    gcs: GCSService = Depends(get_gcs_service),
 ) -> LogEntry:
     _validate_saved_meal_id(db, user.id, payload.savedMealId)
     row = LogEntryRow(
@@ -75,7 +78,7 @@ def create_entry(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return log_entry_to_schema(row)
+    return log_entry_to_schema(row, gcs)
 
 
 @router.patch("/{entry_id}", response_model=LogEntry)
@@ -84,6 +87,7 @@ def update_entry(
     payload: LogEntryUpdate,
     db: Session = Depends(get_db),
     user: UserRow = Depends(get_current_user),
+    gcs: GCSService = Depends(get_gcs_service),
 ) -> LogEntry:
     row = get_owned_entry(db, user.id, entry_id)
     if row is None:
@@ -114,7 +118,7 @@ def update_entry(
 
     db.commit()
     db.refresh(row)
-    return log_entry_to_schema(row)
+    return log_entry_to_schema(row, gcs)
 
 
 @router.delete("/{entry_id}", status_code=204)

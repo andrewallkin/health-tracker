@@ -3,13 +3,18 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from ...config import get_settings
 from ...db_models import UserRow
+from ...gcs import GCSService, get_gcs_service
 from ..deps import get_current_user
-from ..schemas import PhotoUploadResponse
+from ..photo_storage import (
+    is_gcs_object_path,
+    validate_gcs_path_for_user,
+)
+from ..schemas import PhotoUploadResponse, SignedUrlResponse
 
 router = APIRouter(prefix="/photos", tags=["photos"])
 
@@ -35,40 +40,21 @@ def _user_photos_dir(user_id: str) -> Path:
     return path
 
 
-def resolve_meal_photo_path(reference: str, user_id: str) -> Path | None:
-    """Map a stored imageUrl or estimate photo reference to a local file path for the current user."""
-    if reference.startswith("data:"):
-        return None
-
-    settings = get_settings()
-    scoped_prefix = f"/api/photos/{user_id}/"
-    if reference.startswith(scoped_prefix):
-        filename = Path(reference.removeprefix(scoped_prefix)).name
-        path = settings.meal_photos_dir / user_id / filename
-        return path if path.is_file() else None
-
-    legacy_prefix = "/api/photos/"
-    if reference.startswith(legacy_prefix):
-        filename = Path(reference.removeprefix(legacy_prefix)).name
-        if "/" in filename:
-            return None
-        legacy_path = settings.meal_photos_dir / filename
-        if legacy_path.is_file():
-            return legacy_path
-        scoped_path = settings.meal_photos_dir / user_id / filename
-        return scoped_path if scoped_path.is_file() else None
-
-    path = Path(reference)
-    if path.is_file():
-        return path
-
-    return None
+def _content_type_for_ext(ext: str) -> str:
+    if ext in {".png"}:
+        return "image/png"
+    if ext in {".webp"}:
+        return "image/webp"
+    if ext in {".heic", ".heif"}:
+        return "image/heic"
+    return "image/jpeg"
 
 
 @router.post("", response_model=PhotoUploadResponse, status_code=201)
 async def upload_photo(
     file: UploadFile = File(...),
     user: UserRow = Depends(get_current_user),
+    gcs: GCSService = Depends(get_gcs_service),
 ) -> PhotoUploadResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
@@ -80,14 +66,48 @@ async def upload_photo(
 
     ext = suffix if suffix in ALLOWED_EXTENSIONS else ".jpg"
     filename = f"{uuid.uuid4().hex}{ext}"
-    dest = _user_photos_dir(user.id) / filename
 
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
 
+    settings = get_settings()
+    if gcs.is_available():
+        object_name = f"{user.id}/{filename}"
+        gcs_path = gcs.upload_image(
+            settings.gcs_meal_photos_folder,
+            object_name,
+            data,
+            _content_type_for_ext(ext),
+        )
+        if gcs_path is None:
+            raise HTTPException(status_code=502, detail="Photo upload failed")
+        signed_url = gcs.generate_signed_url(gcs_path)
+        if signed_url is None:
+            raise HTTPException(status_code=502, detail="Photo upload failed")
+        return PhotoUploadResponse(path=gcs_path, url=signed_url)
+
+    dest = _user_photos_dir(user.id) / filename
     dest.write_bytes(data)
-    return PhotoUploadResponse(url=f"/api/photos/{user.id}/{filename}")
+    api_path = f"/api/photos/{user.id}/{filename}"
+    return PhotoUploadResponse(path=api_path, url=api_path)
+
+
+@router.get("/signed-url", response_model=SignedUrlResponse)
+def get_signed_url(
+    path: str = Query(..., min_length=1),
+    user: UserRow = Depends(get_current_user),
+    gcs: GCSService = Depends(get_gcs_service),
+) -> SignedUrlResponse:
+    if not is_gcs_object_path(path):
+        raise HTTPException(status_code=400, detail="Invalid photo path")
+    validate_gcs_path_for_user(path, user.id)
+    if not gcs.is_available():
+        raise HTTPException(status_code=503, detail="Photo storage is not configured")
+    signed_url = gcs.generate_signed_url(path)
+    if signed_url is None:
+        raise HTTPException(status_code=502, detail="Could not generate photo URL")
+    return SignedUrlResponse(url=signed_url)
 
 
 @router.get("/{owner_id}/{filename}")

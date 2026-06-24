@@ -40,12 +40,12 @@ export function MealPhotoPicker({
         PROCESS_TIMEOUT_MS,
         "Photo processing timed out. Try again or choose a different image.",
       );
-      const url = await withTimeout(
+      const { path } = await withTimeout(
         uploadMealPhoto(blob, file.name.replace(/\.[^.]+$/, ".jpg")),
         UPLOAD_TIMEOUT_MS,
         "Upload timed out. Check your connection and try again.",
       );
-      onChange(url);
+      onChange(path);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add photo.");
     } finally {

@@ -9,6 +9,8 @@ import uuid
 from datetime import date, timedelta
 from pathlib import Path
 
+from sqlalchemy.orm import Session
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -24,6 +26,7 @@ from backend.db_models import (  # noqa: E402
 
 DAILY_GOAL = {"calories": 2200, "protein": 180, "carbs": 220, "fat": 70}
 
+# Seed meals and log entries are intentionally photo-free (no image_url).
 SAVED_MEALS = [
     {
         "id": "meal-1",
@@ -180,6 +183,14 @@ HISTORICAL_PATTERNS = [
 ]
 
 
+def clear_user_seed_data(db: Session, user_id: str) -> None:
+    """Remove existing nutrition rows for a user before re-seeding."""
+    db.query(LogEntryRow).filter(LogEntryRow.user_id == user_id).delete(synchronize_session=False)
+    db.query(SavedMealRow).filter(SavedMealRow.user_id == user_id).delete(synchronize_session=False)
+    db.query(DailyGoalRow).filter(DailyGoalRow.user_id == user_id).delete(synchronize_session=False)
+    db.query(AppSettingsRow).filter(AppSettingsRow.user_id == user_id).delete(synchronize_session=False)
+
+
 def reset_db() -> None:
     Base.metadata.drop_all(bind=engine)
     init_db()
@@ -197,11 +208,13 @@ def seed(email: str = "demo@example.com", password: str = "password123") -> None
             )
             db.add(user)
             db.flush()
+        else:
+            clear_user_seed_data(db, user.id)
 
         db.add(DailyGoalRow(user_id=user.id, **DAILY_GOAL))
 
         for meal in SAVED_MEALS:
-            db.add(SavedMealRow(user_id=user.id, **meal))
+            db.add(SavedMealRow(user_id=user.id, image_url=None, **meal))
 
         db.add(
             AppSettingsRow(
@@ -218,6 +231,7 @@ def seed(email: str = "demo@example.com", password: str = "password123") -> None
                     id=str(uuid.uuid4()),
                     user_id=user.id,
                     log_date=today.isoformat(),
+                    image_url=None,
                     **entry,
                 )
             )
@@ -240,6 +254,7 @@ def seed(email: str = "demo@example.com", password: str = "password123") -> None
                         carbs=c,
                         fat=f,
                         saved_meal_id=meal_id,
+                        image_url=None,
                     )
                 )
 

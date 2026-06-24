@@ -79,7 +79,10 @@ export async function deleteSavedMeal(id: string): Promise<void> {
   await request<void>(`/meals/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-export async function uploadMealPhoto(file: Blob, filename = "meal.jpg"): Promise<string> {
+export async function uploadMealPhoto(
+  file: Blob,
+  filename = "meal.jpg",
+): Promise<{ path: string; url: string }> {
   const formData = new FormData();
   formData.append("file", file, filename);
 
@@ -99,8 +102,8 @@ export async function uploadMealPhoto(file: Blob, filename = "meal.jpg"): Promis
     throw new ApiError(response.status, message);
   }
 
-  const data = (await response.json()) as { url: string };
-  return data.url;
+  const data = (await response.json()) as { path: string; url: string };
+  return data;
 }
 
 export async function fetchEntriesForDate(dateKey: string): Promise<LogEntry[]> {

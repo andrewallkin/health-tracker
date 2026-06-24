@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ...database import get_db
 from ...db_models import LogEntryRow, SavedMealRow, UserRow
+from ...gcs import GCSService, get_gcs_service
 from ..deps import get_current_user
 from ..mappers import saved_meal_to_schema
 from ..ownership import get_owned_meal
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/meals", tags=["meals"])
 def list_meals(
     db: Session = Depends(get_db),
     user: UserRow = Depends(get_current_user),
+    gcs: GCSService = Depends(get_gcs_service),
 ) -> list[SavedMeal]:
     rows = (
         db.query(SavedMealRow)
@@ -26,7 +28,7 @@ def list_meals(
         .order_by(SavedMealRow.name)
         .all()
     )
-    return [saved_meal_to_schema(row) for row in rows]
+    return [saved_meal_to_schema(row, gcs) for row in rows]
 
 
 @router.post("", response_model=SavedMeal, status_code=201)
@@ -34,6 +36,7 @@ def create_meal(
     payload: SavedMealCreate,
     db: Session = Depends(get_db),
     user: UserRow = Depends(get_current_user),
+    gcs: GCSService = Depends(get_gcs_service),
 ) -> SavedMeal:
     row = SavedMealRow(
         id=str(uuid.uuid4()),
@@ -49,7 +52,7 @@ def create_meal(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return saved_meal_to_schema(row)
+    return saved_meal_to_schema(row, gcs)
 
 
 @router.patch("/{meal_id}", response_model=SavedMeal)
@@ -58,6 +61,7 @@ def update_meal(
     payload: SavedMealUpdate,
     db: Session = Depends(get_db),
     user: UserRow = Depends(get_current_user),
+    gcs: GCSService = Depends(get_gcs_service),
 ) -> SavedMeal:
     row = get_owned_meal(db, user.id, meal_id)
     if row is None:
@@ -82,7 +86,7 @@ def update_meal(
 
     db.commit()
     db.refresh(row)
-    return saved_meal_to_schema(row)
+    return saved_meal_to_schema(row, gcs)
 
 
 @router.delete("/{meal_id}", status_code=204)

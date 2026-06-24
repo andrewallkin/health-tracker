@@ -49,6 +49,11 @@ class SavedMealUpdate(BaseModel):
 
 
 class PhotoUploadResponse(BaseModel):
+    path: str
+    url: str
+
+
+class SignedUrlResponse(BaseModel):
     url: str
 
 

@@ -245,14 +245,17 @@ def test_photo_upload(client, auth_headers):
         files={"file": ("meal.jpg", b"fake-jpeg-bytes", "image/jpeg")},
     )
     assert response.status_code == 201
-    url = response.json()["url"]
-    assert url.startswith("/api/photos/")
+    body = response.json()
+    path = body["path"]
+    url = body["url"]
+    assert path == url
+    assert path.startswith("/api/photos/")
 
-    user_id = url.split("/")[3]
-    filename = url.split("/")[4]
+    user_id = path.split("/")[3]
+    filename = path.split("/")[4]
     assert (get_settings().meal_photos_dir / user_id / filename).is_file()
 
-    get_response = client.get(url, headers=auth_headers)
+    get_response = client.get(path, headers=auth_headers)
     assert get_response.status_code == 200
 
 

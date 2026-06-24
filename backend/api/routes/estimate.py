@@ -6,24 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ...db_models import UserRow
 from ...food_classifier import EstimateAPIError, MacrosEstimator
+from ...gcs import GCSService, get_gcs_service
 from ..deps import get_current_user, get_macros_estimator
 from ..schemas import EstimateRequest, FoodEstimateResponse, MacrosG
-from .photos import resolve_meal_photo_path
+from ..photo_storage import resolve_meal_photo_for_estimate
 
 router = APIRouter(prefix="/estimate", tags=["estimate"])
 
 
-def _resolve_photos(photos: list[str], user_id: str) -> list[str | Path]:
-    resolved: list[str | Path] = []
-    for photo in photos:
-        if photo.startswith("data:"):
-            resolved.append(photo)
-            continue
-        path = resolve_meal_photo_path(photo, user_id)
-        if path is None:
-            raise HTTPException(status_code=400, detail=f"Photo not found: {photo}")
-        resolved.append(path)
-    return resolved
+def _resolve_photos(photos: list[str], user_id: str, gcs: GCSService) -> list[str | Path]:
+    return [resolve_meal_photo_for_estimate(photo, user_id, gcs) for photo in photos]
 
 
 @router.post("", response_model=FoodEstimateResponse)
@@ -31,9 +23,10 @@ def estimate_food(
     payload: EstimateRequest,
     user: UserRow = Depends(get_current_user),
     estimator: MacrosEstimator = Depends(get_macros_estimator),
+    gcs: GCSService = Depends(get_gcs_service),
 ) -> FoodEstimateResponse:
     note = (payload.note or "").strip() or None
-    photos = _resolve_photos(payload.photos or [], user.id)
+    photos = _resolve_photos(payload.photos or [], user.id, gcs)
 
     if not note and not photos:
         raise HTTPException(status_code=400, detail="Provide at least one of note or photos")

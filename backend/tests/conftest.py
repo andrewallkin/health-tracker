@@ -20,9 +20,21 @@ if str(REPO_ROOT) not in sys.path:
 
 os.environ.setdefault("SETTINGS_ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
+os.environ.pop("GCP_SERVICE_ACCOUNT_CREDENTIALS", None)
+os.environ.pop("GCS_IMAGES_BUCKET_NAME", None)
 
 from backend.database import Base, get_db  # noqa: E402
+from backend.gcs import reset_gcs_service  # noqa: E402
 from backend.main import app  # noqa: E402
+
+reset_gcs_service()
+
+
+@pytest.fixture(autouse=True)
+def disable_gcs_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GCP_SERVICE_ACCOUNT_CREDENTIALS", raising=False)
+    monkeypatch.delenv("GCS_IMAGES_BUCKET_NAME", raising=False)
+    reset_gcs_service()
 
 
 @pytest.fixture()
