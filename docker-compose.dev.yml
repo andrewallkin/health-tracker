@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:15
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-health_tracker} -d ${POSTGRES_DB:-health_tracker}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [postgres-net]
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data
+      - ./backend:/app/backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    restart: unless-stopped
+    command: uv run --project backend uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    networks: [default, postgres-net]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    environment:
+      API_PROXY_ORIGIN: http://backend:8000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    ports:
+      - "${FRONTEND_PORT:-3000}:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks: [default]
+
+volumes:
+  postgres_data:
+
+networks:
+  postgres-net:
+    driver: bridge

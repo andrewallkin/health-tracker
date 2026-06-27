@@ -1,0 +1,52 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.pytest_cache
+.coverage
+htmlcov
+.venv
+venv
+env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!backend/**/*.md
+
+# Frontend (not needed for backend builds)
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# Data and logs
+data/
+*.log
+db.sqlite3
+db.sqlite3-journal
+
+# CI/CD
+.github/
+
+# Project files
+.env
+todo.txt
+notebooks/
