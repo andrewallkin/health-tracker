@@ -6,6 +6,7 @@ import {
   type ModelOption,
 } from "../../../lib/api";
 import type { DailyGoal } from "../../../types/nutrition";
+import { useConfirm } from "../../../context/useConfirm";
 import { PageShell } from "../../layout/PageShell";
 import {
   DailyGoalFields,
@@ -36,6 +37,7 @@ export function GoalsSettingsPage({
   onSave,
   onApiKeyChange,
 }: GoalsSettingsPageProps) {
+  const confirm = useConfirm();
   const [goalFields, setGoalFields] = useState<DailyGoalFieldValues>(() =>
     fieldValuesFromDailyGoal(initialGoal),
   );
@@ -46,7 +48,7 @@ export function GoalsSettingsPage({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [keyDialog, setKeyDialog] = useState<"closed" | "input" | "delete">("closed");
+  const [keyDialog, setKeyDialog] = useState<"closed" | "input">("closed");
   const [keyInput, setKeyInput] = useState("");
   const [keySaving, setKeySaving] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
@@ -139,12 +141,24 @@ export function GoalsSettingsPage({
       const saved = await updateAiSettings({ clearApiKey: true, textModel, imageModel });
       setHasApiKey(saved.hasApiKey);
       onApiKeyChange?.(saved.hasApiKey);
-      setKeyDialog("closed");
     } catch (err) {
       setKeyError(err instanceof Error ? err.message : "Could not remove API key");
     } finally {
       setKeySaving(false);
     }
+  };
+
+  const requestDeleteKey = () => {
+    setKeyError(null);
+    void (async () => {
+      const ok = await confirm({
+        title: "Remove API key?",
+        message: "AI food estimates will stop working until you add a new key.",
+        confirmLabel: "Delete key",
+        destructive: true,
+      });
+      if (ok) await handleDeleteKey();
+    })();
   };
 
   return (
@@ -213,13 +227,11 @@ export function GoalsSettingsPage({
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          setKeyError(null);
-                          setKeyDialog("delete");
-                        }}
-                        className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/20"
+                        disabled={keySaving}
+                        onClick={requestDeleteKey}
+                        className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-50"
                       >
-                        Delete
+                        {keySaving ? "Removing…" : "Delete"}
                       </button>
                     </div>
                   </div>
@@ -239,6 +251,12 @@ export function GoalsSettingsPage({
                   </div>
                 )}
               </div>
+
+              {keyError && keyDialog === "closed" && (
+                <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+                  {keyError}
+                </p>
+              )}
 
               <div className="mt-4 grid grid-cols-1 gap-3">
                 <Field label="Text model">
@@ -314,37 +332,6 @@ export function GoalsSettingsPage({
               className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-semibold text-zinc-900 transition hover:bg-amber-400 disabled:opacity-40"
             >
               {keySaving ? "Saving…" : "Save key"}
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {keyDialog === "delete" && (
-        <Modal title="Remove API key?" onClose={closeKeyDialog}>
-          <p className="mb-4 text-sm leading-relaxed text-zinc-400">
-            AI food estimates will stop working until you add a new key.
-          </p>
-          {keyError && (
-            <p className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
-              {keyError}
-            </p>
-          )}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={keySaving}
-              onClick={closeKeyDialog}
-              className="flex-1 rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-semibold text-zinc-300 transition hover:bg-white/10 disabled:opacity-40"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={keySaving}
-              onClick={() => void handleDeleteKey()}
-              className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:opacity-40"
-            >
-              {keySaving ? "Removing…" : "Delete key"}
             </button>
           </div>
         </Modal>

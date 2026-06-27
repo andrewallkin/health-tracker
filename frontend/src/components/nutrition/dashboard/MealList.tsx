@@ -1,4 +1,5 @@
 import type { LogEntry, MealSlot } from "../../../types/nutrition";
+import { useConfirm } from "../../../context/useConfirm";
 import { MealCard } from "./MealCard";
 
 interface MealListProps {
@@ -17,6 +18,8 @@ const slotLabels: Record<MealSlot, string> = {
 };
 
 export function MealList({ entries, onDeleteEntry, onEditEntry }: MealListProps) {
+  const confirm = useConfirm();
+
   const grouped = slotOrder
     .map((slot) => ({
       slot,
@@ -37,7 +40,17 @@ export function MealList({ entries, onDeleteEntry, onEditEntry }: MealListProps)
               <MealCard
                 key={entry.id}
                 entry={entry}
-                onDelete={() => onDeleteEntry(entry.id)}
+                onDelete={() => {
+                  void (async () => {
+                    const ok = await confirm({
+                      title: "Delete log entry?",
+                      message: `Remove "${entry.name}" from this day? This can't be undone.`,
+                      confirmLabel: "Delete",
+                      destructive: true,
+                    });
+                    if (ok) onDeleteEntry(entry.id);
+                  })();
+                }}
                 onEdit={() => onEditEntry(entry.id)}
               />
             ))}

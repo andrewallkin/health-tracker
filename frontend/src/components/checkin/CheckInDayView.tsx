@@ -1,4 +1,5 @@
 import type { CheckIn } from "../../types/health";
+import { useConfirm } from "../../context/useConfirm";
 import { addDays, formatDayHeader, isToday, toDateKey } from "../../lib/dates";
 import { PAGE_SHELL } from "../../lib/layout";
 import { isFutureDate } from "../../lib/logLabels";
@@ -32,6 +33,7 @@ export function CheckInDayView({
   onDeleteCheckIn,
   onDismissDeleteCheckInError,
 }: CheckInDayViewProps) {
+  const confirm = useConfirm();
   const title = isToday(selectedDate) ? "Today" : formatDayHeader(selectedDate);
   const future = isFutureDate(selectedDate);
 
@@ -85,7 +87,17 @@ export function CheckInDayView({
             <CheckInCard
               checkIn={checkIn}
               onEdit={onEditCheckIn}
-              onDelete={onDeleteCheckIn}
+              onDelete={() => {
+                void (async () => {
+                  const ok = await confirm({
+                    title: "Delete check-in?",
+                    message: "This will remove the check-in and its photos for this day.",
+                    confirmLabel: "Delete",
+                    destructive: true,
+                  });
+                  if (ok) onDeleteCheckIn();
+                })();
+              }}
               isDeleting={isDeletingCheckIn}
             />
           ) : (
