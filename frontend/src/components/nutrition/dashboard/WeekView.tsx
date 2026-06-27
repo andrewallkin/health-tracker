@@ -29,24 +29,25 @@ export function WeekView({
   onSelectDate,
 }: WeekViewProps) {
   const { start, end, dates } = getWeekRange(anchorDate);
+  const fetchKey = `${start}:${end}:${entriesVersion}`;
   const [entriesByDate, setEntriesByDate] = useState<Map<string, LogEntry[]>>(new Map());
-  const [loading, setLoading] = useState(true);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const loading = loadedKey !== fetchKey;
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     fetchEntriesInRange(start, end)
       .then((entries) => {
-        if (!cancelled) setEntriesByDate(groupEntriesByDate(entries));
+        if (!cancelled) {
+          setEntriesByDate(groupEntriesByDate(entries));
+          setLoadedKey(fetchKey);
+        }
       })
-      .catch(console.error)
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .catch(console.error);
     return () => {
       cancelled = true;
     };
-  }, [start, end, entriesVersion]);
+  }, [fetchKey, start, end]);
 
   const summary = useMemo(
     () => aggregateWeek(dates, goal, entriesByDate),

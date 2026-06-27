@@ -1,13 +1,19 @@
-# garmin-api
+# health-tracker
 
-Personal health and nutrition tooling: Garmin Connect exploration, OpenAI food estimation, and a React nutrition dashboard.
+Personal nutrition tracker with AI food estimation, daily check-ins, and Garmin research tooling.
+
+The app has three main sections:
+
+- **Food** — log meals, track macros, AI photo/text estimation, day/week/month dashboards
+- **Check-in** — daily weight and progress photos
+- **Health** — Garmin-style activity views (UI stub; live data not wired yet)
 
 ## Project structure
 
 | Folder | Description |
 |--------|-------------|
-| [`backend/`](backend/) | FastAPI app, SQLite persistence, and `MacrosEstimator` (`backend/pyproject.toml`) |
-| [`frontend/`](frontend/) | Nutrition & health dashboard (Vite + React + TypeScript) |
+| [`backend/`](backend/) | FastAPI app, PostgreSQL via SQLAlchemy, Alembic migrations, `MacrosEstimator` |
+| [`frontend/`](frontend/) | React dashboard (Vite + TypeScript + Tailwind) |
 | [`notebooks/`](notebooks/) | Jupyter notebooks for Garmin API and food vision demos |
 | [`scripts/`](scripts/) | Utility scripts (Garmin demo, DB seeding) |
 | [`tests/fixtures/`](tests/fixtures/) | Test input images for notebooks and integration tests |
@@ -15,67 +21,102 @@ Personal health and nutrition tooling: Garmin Connect exploration, OpenAI food e
 
 ## Quick start
 
-### Backend + database
+### Prerequisites
 
-Using [uv](https://docs.astral.sh/uv/):
+- [uv](https://docs.astral.sh/uv/) (Python 3.11+)
+- Node.js 20+ (for local frontend dev)
+- Docker (recommended for Postgres + full stack)
+
+### 1. Environment
 
 ```bash
-# Root: scripts, notebooks, and backend deps (uv workspace)
 uv sync --all-packages --all-groups
 cp .env.example .env
 ```
 
-Backend-only sync (same deps a future Docker image will use):
+Fill in `.env`:
 
-```bash
-uv sync --project backend --all-groups
-```
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `POSTGRES_*` | Yes | Database connection (see `.env.example`) |
+| `SETTINGS_ENCRYPTION_KEY` | Yes | Encrypts per-user OpenAI keys in the DB |
+| `JWT_SECRET_KEY` | Yes | Auth signing secret (use a strong value in production) |
+| `CORS_ORIGINS` | Dev | Comma-separated frontend origins |
+| `GCP_SERVICE_ACCOUNT_CREDENTIALS` | Prod | Base64 service account JSON for GCS photo storage |
+| `GCS_IMAGES_BUCKET_NAME` | Prod | Bucket for meal and check-in photos |
 
-Generate an encryption key and add it to `.env`:
+Generate an encryption key:
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Seed the SQLite database with dummy nutrition data:
+### 2. Run with Docker (recommended)
+
+Starts Postgres, backend (with hot reload), and frontend dev server:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+./backend/run_migrations.sh
+```
+
+Optional — seed demo data:
 
 ```bash
 uv run python scripts/seed_db.py --reset
 ```
 
-Run the API (from repo root):
+Then open **http://localhost:3000** and sign in with `demo@example.com` / `password123`, or register at `/register`.
+
+Add your OpenAI API key in the app **Settings** screen (stored encrypted in PostgreSQL).
+
+### 3. Run locally (without Docker frontend)
+
+With Postgres running (via Docker or otherwise) and `.env` pointing at it:
 
 ```bash
+./backend/run_migrations.sh
 uv run --project backend uvicorn backend.main:app --reload --port 8000
+
+cd frontend && npm install && npm run dev
 ```
 
-Add your OpenAI API key and model choices in the app **Settings** screen (stored encrypted in SQLite).
+Open **http://localhost:5173**. Vite proxies `/api` to the backend on port 8000.
 
-### Frontend
+Backend-only dependency sync (matches the Docker image):
 
 ```bash
-cd frontend
-npm install
-npm run dev
+uv sync --project backend --all-groups
 ```
-
-Open `http://localhost:5173`. Vite proxies `/api` to the backend on port 8000.
 
 ### Tests
 
 ```bash
 uv run --project backend pytest
+cd frontend && npm test
 ```
 
-## Notebooks
+## Production deployment
 
-Install the Jupyter kernel once (uses the root project env):
+Pushing to `main` triggers [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml):
+
+1. Build and push backend/frontend Docker images to Docker Hub
+2. Deploy to VPS via SSH with `docker-compose.yml`
+3. Run Alembic migrations inside the backend container
+
+Production uses an external Postgres network (`postgres-net`) and GCS for photo storage. See `.env.example` for all production variables.
+
+## Research
+
+Garmin Connect exploration lives in notebooks and scripts — not connected to the main app yet.
+
+Install the Jupyter kernel once:
 
 ```bash
 uv run python -m ipykernel install --user --name health-tracker --display-name "Health Tracker"
 ```
 
-Run from the repo root or from `notebooks/`:
+Notebooks:
 
 - `notebooks/explore.ipynb` — Garmin Connect API exploration
 - `notebooks/food_estimate_vision.ipynb` — food calorie/macro estimation demo

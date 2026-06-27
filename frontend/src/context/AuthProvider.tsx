@@ -1,42 +1,13 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import * as authApi from "../lib/authApi";
 import type { User } from "../lib/authApi";
 import { setAccessToken } from "../lib/client";
-
-type AuthContextType = {
-  user: User | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-};
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-/** Single-flight load so React Strict Mode does not call refresh twice (backend tokens are one-use). */
-let initialSessionPromise: Promise<User | null> | null = null;
-
-function loadUserFromRefreshCookie(): Promise<User | null> {
-  if (!initialSessionPromise) {
-    initialSessionPromise = (async () => {
-      try {
-        const refreshed = await authApi.refresh();
-        setAccessToken(refreshed.access_token);
-        return await authApi.me();
-      } catch {
-        setAccessToken(null);
-        return null;
-      }
-    })();
-  }
-  return initialSessionPromise;
-}
-
-function invalidateSessionBootstrapCache() {
-  initialSessionPromise = null;
-}
+import {
+  AuthContext,
+  invalidateSessionBootstrapCache,
+  loadUserFromRefreshCookie,
+} from "./auth-context";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -65,17 +36,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const value = useMemo<AuthContextType>(
+  const value = useMemo(
     () => ({
       user,
       isLoading,
       isAuthenticated: !!user,
-      async login(email, password) {
+      async login(email: string, password: string) {
         const data = await authApi.login(email, password);
         setAccessToken(data.access_token);
         setUser(data.user);
       },
-      async register(email, password) {
+      async register(email: string, password: string) {
         const data = await authApi.register(email, password);
         setAccessToken(data.access_token);
         setUser(data.user);
@@ -94,12 +65,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within AuthProvider");
-  }
-  return context;
 }

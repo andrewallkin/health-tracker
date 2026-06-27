@@ -36,24 +36,25 @@ export function MonthView({
   const gridDates = getMonthGrid(year, month);
   const rangeStart = gridDates[0];
   const rangeEnd = gridDates[gridDates.length - 1];
+  const fetchKey = `${rangeStart}:${rangeEnd}:${entriesVersion}`;
   const [entriesByDate, setEntriesByDate] = useState<Map<string, LogEntry[]>>(new Map());
-  const [loading, setLoading] = useState(true);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const loading = loadedKey !== fetchKey;
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     fetchEntriesInRange(rangeStart, rangeEnd)
       .then((entries) => {
-        if (!cancelled) setEntriesByDate(groupEntriesByDate(entries));
+        if (!cancelled) {
+          setEntriesByDate(groupEntriesByDate(entries));
+          setLoadedKey(fetchKey);
+        }
       })
-      .catch(console.error)
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .catch(console.error);
     return () => {
       cancelled = true;
     };
-  }, [rangeStart, rangeEnd, entriesVersion]);
+  }, [fetchKey, rangeStart, rangeEnd]);
 
   const summary = useMemo(
     () => aggregateMonth(year, month, goal, entriesByDate),

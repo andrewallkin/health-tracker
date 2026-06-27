@@ -15,22 +15,16 @@ function isGcsObjectPath(src: string): boolean {
   );
 }
 
+function needsAsyncFetch(src: string | undefined): src is string {
+  return Boolean(src && (isAuthenticatedPhotoSrc(src) || isGcsObjectPath(src)));
+}
+
 export function useAuthenticatedImageSrc(src: string | undefined): string | undefined {
-  const [resolvedSrc, setResolvedSrc] = useState<string | undefined>(() => {
-    if (!src || isAuthenticatedPhotoSrc(src) || isGcsObjectPath(src)) return undefined;
-    return src;
-  });
+  const [fetchedSrc, setFetchedSrc] = useState<string | undefined>(undefined);
+  const [fetchedForSrc, setFetchedForSrc] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (!src) {
-      setResolvedSrc(undefined);
-      return;
-    }
-
-    if (!isAuthenticatedPhotoSrc(src) && !isGcsObjectPath(src)) {
-      setResolvedSrc(src);
-      return;
-    }
+    if (!needsAsyncFetch(src)) return;
 
     let cancelled = false;
     let objectUrl: string | null = null;
@@ -58,12 +52,14 @@ export function useAuthenticatedImageSrc(src: string | undefined): string | unde
     void load
       .then((url) => {
         if (!cancelled) {
-          setResolvedSrc(url);
+          setFetchedSrc(url);
+          setFetchedForSrc(src);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setResolvedSrc(undefined);
+          setFetchedSrc(undefined);
+          setFetchedForSrc(src);
         }
       });
 
@@ -75,5 +71,7 @@ export function useAuthenticatedImageSrc(src: string | undefined): string | unde
     };
   }, [src]);
 
-  return resolvedSrc;
+  if (!src) return undefined;
+  if (!needsAsyncFetch(src)) return src;
+  return fetchedForSrc === src ? fetchedSrc : undefined;
 }
