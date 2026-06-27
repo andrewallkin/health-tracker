@@ -2,9 +2,16 @@ import type { DescribeFoodInput, FoodEstimate } from "../types/foodEstimate";
 import type { CheckIn, CheckInUpsertPayload } from "../types/health";
 import type { DailyGoal, LogEntry, SavedMeal } from "../types/nutrition";
 import type { NewSavedMealPayload } from "./savedMeal";
-import { API_BASE, ApiError, apiFetch, request } from "./client";
+import { API_BASE, ApiError, apiFetch, parseErrorMessage, request } from "./client";
 
 export { ApiError };
+
+export const DEFAULT_DAILY_GOAL: DailyGoal = {
+  calories: 2200,
+  protein: 180,
+  carbs: 220,
+  fat: 70,
+};
 
 export interface AiSettings {
   hasApiKey: boolean;
@@ -41,8 +48,15 @@ export interface LogEntryCreate {
   imageUrl?: string;
 }
 
-export async function fetchGoals(): Promise<DailyGoal> {
-  return request<DailyGoal>("/goals");
+export async function fetchGoals(): Promise<DailyGoal | null> {
+  const response = await apiFetch("/goals");
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseErrorMessage(response));
+  }
+  return (await response.json()) as DailyGoal;
 }
 
 export async function updateGoals(goal: DailyGoal): Promise<DailyGoal> {

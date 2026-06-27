@@ -8,8 +8,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.api.mappers import (
+    DEFAULT_DAILY_GOAL,
     app_settings_to_schema,
     daily_goal_to_schema,
+    get_app_settings,
+    get_daily_goal,
     get_or_create_app_settings,
     get_or_create_daily_goal,
     log_entry_to_schema,
@@ -52,11 +55,35 @@ def _create_user(db) -> UserRow:
     return user
 
 
+def test_get_daily_goal_returns_none_for_new_user(db_session) -> None:
+    user = _create_user(db_session)
+    assert get_daily_goal(db_session, user.id) is None
+
+
+def test_get_app_settings_returns_none_for_new_user(db_session) -> None:
+    user = _create_user(db_session)
+    assert get_app_settings(db_session, user.id) is None
+
+
+def test_get_or_create_app_settings_handles_concurrent_create(db_session) -> None:
+    user = _create_user(db_session)
+    existing = AppSettingsRow(
+        user_id=user.id,
+        text_model="gpt-5-nano",
+        image_model="gpt-5-mini",
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    row = get_or_create_app_settings(db_session, user.id)
+    assert row.id == existing.id
+
+
 def test_get_or_create_daily_goal_defaults(db_session) -> None:
     user = _create_user(db_session)
     row = get_or_create_daily_goal(db_session, user.id)
-    assert row.calories == 2200
-    assert row.protein == 180
+    assert row.calories == DEFAULT_DAILY_GOAL["calories"]
+    assert row.protein == DEFAULT_DAILY_GOAL["protein"]
 
     again = get_or_create_daily_goal(db_session, user.id)
     assert again.id == row.id

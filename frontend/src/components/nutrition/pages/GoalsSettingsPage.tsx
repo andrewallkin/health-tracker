@@ -7,6 +7,13 @@ import {
 } from "../../../lib/api";
 import type { DailyGoal } from "../../../types/nutrition";
 import { PageShell } from "../../layout/PageShell";
+import {
+  DailyGoalFields,
+  dailyGoalFromFieldValues,
+  fieldValuesFromDailyGoal,
+  isValidDailyGoal,
+  type DailyGoalFieldValues,
+} from "../shared/DailyGoalFields";
 
 export interface SettingsSavePayload {
   goal: DailyGoal;
@@ -29,10 +36,9 @@ export function GoalsSettingsPage({
   onSave,
   onApiKeyChange,
 }: GoalsSettingsPageProps) {
-  const [calories, setCalories] = useState(String(initialGoal.calories));
-  const [protein, setProtein] = useState(String(initialGoal.protein));
-  const [carbs, setCarbs] = useState(String(initialGoal.carbs));
-  const [fat, setFat] = useState(String(initialGoal.fat));
+  const [goalFields, setGoalFields] = useState<DailyGoalFieldValues>(() =>
+    fieldValuesFromDailyGoal(initialGoal),
+  );
   const [textModel, setTextModel] = useState("gpt-5-nano");
   const [imageModel, setImageModel] = useState("gpt-5-mini");
   const [hasApiKey, setHasApiKey] = useState(false);
@@ -66,14 +72,9 @@ export function GoalsSettingsPage({
     };
   }, []);
 
-  const goal: DailyGoal = {
-    calories: parsePositive(calories),
-    protein: parseNonNegative(protein),
-    carbs: parseNonNegative(carbs),
-    fat: parseNonNegative(fat),
-  };
+  const goal = dailyGoalFromFieldValues(goalFields);
 
-  const isValid = goal.calories > 0 && textModel && imageModel;
+  const isValid = isValidDailyGoal(goal) && textModel && imageModel;
 
   const handleSave = async () => {
     if (!isValid) return;
@@ -181,49 +182,7 @@ export function GoalsSettingsPage({
                 These targets drive your progress ring, macro bars, and remaining budget.
               </p>
 
-              <Field label="Daily calorie target (kcal)">
-                <input
-                  type="number"
-                  min={1}
-                  inputMode="numeric"
-                  value={calories}
-                  onChange={(e) => setCalories(e.target.value)}
-                  className={inputClass}
-                />
-              </Field>
-
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <Field label="Protein (g)">
-                  <input
-                    type="number"
-                    min={0}
-                    inputMode="numeric"
-                    value={protein}
-                    onChange={(e) => setProtein(e.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Carbs (g)">
-                  <input
-                    type="number"
-                    min={0}
-                    inputMode="numeric"
-                    value={carbs}
-                    onChange={(e) => setCarbs(e.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Fat (g)">
-                  <input
-                    type="number"
-                    min={0}
-                    inputMode="numeric"
-                    value={fat}
-                    onChange={(e) => setFat(e.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
-              </div>
+              <DailyGoalFields values={goalFields} onChange={setGoalFields} />
             </section>
 
             <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
@@ -407,18 +366,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </label>
   );
-}
-
-function parseNonNegative(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.round(parsed);
-}
-
-function parsePositive(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-  return Math.round(parsed);
 }
 
 function formatModelLabel(model: ModelOption, role: "text" | "image"): string {

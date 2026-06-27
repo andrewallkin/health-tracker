@@ -41,7 +41,7 @@ export function RegisterPage() {
     setIsSubmitting(true);
     try {
       await register(email.trim(), password);
-      navigate("/", { replace: true });
+      navigate("/onboarding/goals", { replace: true });
     } catch (err) {
       setError(getErrorMessage(err, "Unable to create account"));
     } finally {

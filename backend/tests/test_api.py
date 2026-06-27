@@ -31,14 +31,17 @@ def test_protected_routes_require_auth(client):
 
 def test_goals_crud(client, auth_headers):
     response = client.get("/api/goals", headers=auth_headers)
-    assert response.status_code == 200
-    assert response.json()["calories"] == 2200
+    assert response.status_code == 404
 
     response = client.put(
         "/api/goals",
         headers=auth_headers,
         json={"calories": 2000, "protein": 150, "carbs": 200, "fat": 65},
     )
+    assert response.status_code == 200
+    assert response.json()["calories"] == 2000
+
+    response = client.get("/api/goals", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["calories"] == 2000
 

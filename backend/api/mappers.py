@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..crypto import decrypt_api_key, mask_api_key
@@ -8,25 +9,53 @@ from ..gcs import GCSService
 from .photo_storage import resolve_image_url_for_response
 from .schemas import AiSettings, CheckIn, CheckInPhoto, DailyGoal, LogEntry, SavedMeal
 
+DEFAULT_DAILY_GOAL = {"calories": 2200, "protein": 180, "carbs": 220, "fat": 70}
+
+
+def get_daily_goal(db: Session, user_id: str) -> DailyGoalRow | None:
+    return db.query(DailyGoalRow).filter(DailyGoalRow.user_id == user_id).first()
+
 
 def get_or_create_daily_goal(db: Session, user_id: str) -> DailyGoalRow:
-    row = db.query(DailyGoalRow).filter(DailyGoalRow.user_id == user_id).first()
-    if row is None:
-        row = DailyGoalRow(user_id=user_id, calories=2200, protein=180, carbs=220, fat=70)
-        db.add(row)
+    row = get_daily_goal(db, user_id)
+    if row is not None:
+        return row
+
+    row = DailyGoalRow(user_id=user_id, **DEFAULT_DAILY_GOAL)
+    db.add(row)
+    try:
         db.commit()
         db.refresh(row)
-    return row
+        return row
+    except IntegrityError:
+        db.rollback()
+        row = get_daily_goal(db, user_id)
+        if row is None:
+            raise
+        return row
+
+
+def get_app_settings(db: Session, user_id: str) -> AppSettingsRow | None:
+    return db.query(AppSettingsRow).filter(AppSettingsRow.user_id == user_id).first()
 
 
 def get_or_create_app_settings(db: Session, user_id: str) -> AppSettingsRow:
-    row = db.query(AppSettingsRow).filter(AppSettingsRow.user_id == user_id).first()
-    if row is None:
-        row = AppSettingsRow(user_id=user_id, text_model="gpt-5-nano", image_model="gpt-5-mini")
-        db.add(row)
+    row = get_app_settings(db, user_id)
+    if row is not None:
+        return row
+
+    row = AppSettingsRow(user_id=user_id, text_model="gpt-5-nano", image_model="gpt-5-mini")
+    db.add(row)
+    try:
         db.commit()
         db.refresh(row)
-    return row
+        return row
+    except IntegrityError:
+        db.rollback()
+        row = get_app_settings(db, user_id)
+        if row is None:
+            raise
+        return row
 
 
 def daily_goal_to_schema(row: DailyGoalRow) -> DailyGoal:

@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from backend.auth import get_password_hash  # noqa: E402
 from backend.database import Base, SessionLocal, engine  # noqa: E402
+from backend.api.mappers import DEFAULT_DAILY_GOAL  # noqa: E402
 from backend.db_models import (  # noqa: E402
     AppSettingsRow,
     DailyGoalRow,
@@ -24,7 +25,7 @@ from backend.db_models import (  # noqa: E402
     UserRow,
 )
 
-DAILY_GOAL = {"calories": 2200, "protein": 180, "carbs": 220, "fat": 70}
+DAILY_GOAL = DEFAULT_DAILY_GOAL
 
 # Seed meals and log entries are intentionally photo-free (no image_url).
 SAVED_MEALS = [

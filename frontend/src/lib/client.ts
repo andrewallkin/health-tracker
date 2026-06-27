@@ -20,7 +20,7 @@ export class ApiError extends Error {
   }
 }
 
-async function parseErrorMessage(response: Response): Promise<string> {
+export async function parseErrorMessage(response: Response): Promise<string> {
   let message = response.statusText;
   try {
     const body = (await response.json()) as { detail?: string | { msg: string }[] };
