@@ -72,4 +72,27 @@ export interface HealthMonthSummary {
   activityByType: Record<ActivityType, number>;
 }
 
-export type AppSection = "nutrition" | "health";
+export type AppSection = "nutrition" | "health" | "check-in";
+
+export interface CheckInPhoto {
+  id: string;
+  imageUrl: string;
+  imagePath: string;
+  sortOrder: number;
+}
+
+export interface CheckIn {
+  id: string;
+  checkInDate: string;
+  recordedAt: string;
+  weightKg: number | null;
+  notes: string | null;
+  photos: CheckInPhoto[];
+}
+
+export interface CheckInUpsertPayload {
+  checkInDate: string;
+  weightKg?: number | null;
+  notes?: string | null;
+  photoPaths: string[];
+}

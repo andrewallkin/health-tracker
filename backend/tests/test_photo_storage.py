@@ -9,6 +9,7 @@ from backend.api.photo_storage import (
     is_gcs_object_path,
     resolve_image_url_for_response,
     resolve_meal_photo_path,
+    validate_check_in_photo_path,
     validate_gcs_path_for_user,
 )
 from backend.config import get_settings
@@ -58,6 +59,28 @@ def test_validate_gcs_path_for_user() -> None:
     with pytest.raises(HTTPException) as exc:
         validate_gcs_path_for_user(f"{settings.gcs_meal_photos_folder}/{user_id}/nested/meal.jpg", user_id)
     assert exc.value.status_code == 404
+
+
+def test_validate_gcs_path_for_check_in_folder() -> None:
+    settings = get_settings()
+    user_id = "user-123"
+    valid = f"{settings.gcs_check_in_photos_folder}/{user_id}/photo.jpg"
+    validate_gcs_path_for_user(valid, user_id)
+
+
+def test_validate_check_in_photo_path() -> None:
+    settings = get_settings()
+    user_id = "user-123"
+    valid = f"{settings.gcs_check_in_photos_folder}/{user_id}/photo.jpg"
+    validate_check_in_photo_path(valid, user_id)
+
+    with pytest.raises(HTTPException) as exc:
+        validate_check_in_photo_path(f"{settings.gcs_meal_photos_folder}/{user_id}/meal.jpg", user_id)
+    assert exc.value.status_code == 404
+
+    with pytest.raises(HTTPException) as exc:
+        validate_check_in_photo_path(f"/api/photos/{user_id}/photo.jpg", user_id)
+    assert exc.value.status_code == 400
 
 
 def test_resolve_meal_photo_path_scoped_and_legacy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

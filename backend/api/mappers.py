@@ -3,10 +3,10 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from ..crypto import decrypt_api_key, mask_api_key
-from ..db_models import AppSettingsRow, DailyGoalRow, LogEntryRow, SavedMealRow
+from ..db_models import AppSettingsRow, CheckInRow, DailyGoalRow, LogEntryRow, SavedMealRow
 from ..gcs import GCSService
 from .photo_storage import resolve_image_url_for_response
-from .schemas import AiSettings, DailyGoal, LogEntry, SavedMeal
+from .schemas import AiSettings, CheckIn, CheckInPhoto, DailyGoal, LogEntry, SavedMeal
 
 
 def get_or_create_daily_goal(db: Session, user_id: str) -> DailyGoalRow:
@@ -85,4 +85,23 @@ def app_settings_to_schema(row: AppSettingsRow) -> AiSettings:
         apiKeyHint=hint,
         textModel=row.text_model,
         imageModel=row.image_model,
+    )
+
+
+def check_in_to_schema(row: CheckInRow, gcs: GCSService) -> CheckIn:
+    return CheckIn(
+        id=row.id,
+        checkInDate=row.check_in_date,
+        recordedAt=row.recorded_at.isoformat() + "Z",
+        weightKg=row.weight_kg,
+        notes=row.notes,
+        photos=[
+            CheckInPhoto(
+                id=photo.id,
+                imageUrl=resolve_image_url_for_response(photo.image_url, gcs) or photo.image_url,
+                imagePath=photo.image_url,
+                sortOrder=photo.sort_order,
+            )
+            for photo in row.photos
+        ],
     )

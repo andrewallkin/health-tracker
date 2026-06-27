@@ -24,6 +24,7 @@ class Settings:
     gcp_service_account_credentials: str
     gcs_images_bucket_name: str
     gcs_meal_photos_folder: str
+    gcs_check_in_photos_folder: str
     jwt_secret_key: str
     jwt_access_token_expire_minutes: int
     jwt_refresh_token_expire_days: int
@@ -50,6 +51,9 @@ class Settings:
         self.gcp_service_account_credentials = os.environ.get("GCP_SERVICE_ACCOUNT_CREDENTIALS", "")
         self.gcs_images_bucket_name = os.environ.get("GCS_IMAGES_BUCKET_NAME", "")
         self.gcs_meal_photos_folder = os.environ.get("GCS_MEAL_PHOTOS_FOLDER", "meal-photos")
+        self.gcs_check_in_photos_folder = os.environ.get(
+            "GCS_CHECK_IN_PHOTOS_FOLDER", "check-in-photos"
+        )
         self.jwt_secret_key = os.environ.get("JWT_SECRET_KEY", "dev-secret-change-me")
         self.jwt_access_token_expire_minutes = int(
             os.environ.get("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60")

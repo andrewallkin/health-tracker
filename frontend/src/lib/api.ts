@@ -1,4 +1,5 @@
 import type { DescribeFoodInput, FoodEstimate } from "../types/foodEstimate";
+import type { CheckIn, CheckInUpsertPayload } from "../types/health";
 import type { DailyGoal, LogEntry, SavedMeal } from "../types/nutrition";
 import type { NewSavedMealPayload } from "./savedMeal";
 import { API_BASE, ApiError, apiFetch, request } from "./client";
@@ -104,6 +105,54 @@ export async function uploadMealPhoto(
 
   const data = (await response.json()) as { path: string; url: string };
   return data;
+}
+
+export async function uploadCheckInPhoto(
+  file: Blob,
+  filename = "check-in.jpg",
+): Promise<{ path: string; url: string }> {
+  const formData = new FormData();
+  formData.append("file", file, filename);
+
+  const response = await apiFetch("/photos?purpose=check-in", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let message = response.statusText;
+    try {
+      const body = (await response.json()) as { detail?: string };
+      if (typeof body.detail === "string") message = body.detail;
+    } catch {
+      // ignore parse errors
+    }
+    throw new ApiError(response.status, message);
+  }
+
+  const data = (await response.json()) as { path: string; url: string };
+  return data;
+}
+
+export async function fetchCheckInForDate(dateKey: string): Promise<CheckIn | null> {
+  return request<CheckIn | null>(`/check-ins?date=${encodeURIComponent(dateKey)}`);
+}
+
+export async function fetchCheckInsInRange(from: string, to: string): Promise<CheckIn[]> {
+  const params = new URLSearchParams({ from, to });
+  return request<CheckIn[]>(`/check-ins?${params}`);
+}
+
+export async function upsertCheckIn(payload: CheckInUpsertPayload): Promise<CheckIn> {
+  return request<CheckIn>("/check-ins", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCheckIn(id: string): Promise<void> {
+  await request<void>(`/check-ins/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export async function fetchEntriesForDate(dateKey: string): Promise<LogEntry[]> {

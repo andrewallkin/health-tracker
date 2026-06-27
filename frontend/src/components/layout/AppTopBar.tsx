@@ -10,6 +10,7 @@ interface AppTopBarProps {
 const SECTIONS: { id: AppSection; label: string }[] = [
   { id: "nutrition", label: "Food" },
   { id: "health", label: "Health" },
+  { id: "check-in", label: "Check-in" },
 ];
 
 export function AppTopBar({ section, onSectionChange, onOpenSettings, onLogout }: AppTopBarProps) {
@@ -24,7 +25,7 @@ export function AppTopBar({ section, onSectionChange, onOpenSettings, onLogout }
                 key={item.id}
                 type="button"
                 onClick={() => onSectionChange(item.id)}
-                className={`flex-1 rounded-full py-2 text-sm font-semibold transition ${
+                className={`flex-1 rounded-full py-2 text-xs font-semibold transition sm:text-sm ${
                   active
                     ? "bg-white/10 text-white shadow-sm"
                     : "text-zinc-500 hover:text-zinc-300"

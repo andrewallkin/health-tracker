@@ -143,3 +143,26 @@ class FoodEstimateResponse(BaseModel):
     source: EstimateSource
     summary: str
     assumptions: list[str]
+
+
+class CheckInPhoto(BaseModel):
+    id: str
+    imageUrl: str
+    imagePath: str
+    sortOrder: int
+
+
+class CheckIn(BaseModel):
+    id: str
+    checkInDate: str
+    recordedAt: str
+    weightKg: float | None = None
+    notes: str | None = None
+    photos: list[CheckInPhoto]
+
+
+class CheckInUpsert(BaseModel):
+    checkInDate: str
+    weightKg: float | None = None
+    notes: str | None = None
+    photoPaths: list[str] = Field(default_factory=list, max_length=10)

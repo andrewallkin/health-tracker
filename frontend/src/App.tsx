@@ -4,7 +4,9 @@ import {
   createSavedMeal,
   deleteLogEntry,
   deleteSavedMeal,
+  deleteCheckIn,
   fetchAiSettings,
+  fetchCheckInForDate,
   fetchEntriesForDate,
   fetchGoals,
   fetchSavedMeals,
@@ -12,6 +14,7 @@ import {
   updateGoals,
   updateLogEntry,
   updateSavedMeal,
+  upsertCheckIn,
 } from "./lib/api";
 import { toDateKey } from "./lib/dates";
 import { isFutureDate } from "./lib/logLabels";
@@ -23,15 +26,13 @@ import {
 } from "./lib/quickLog";
 import { findSavedMeal, type NewSavedMealPayload } from "./lib/savedMeal";
 import type { DescribeFoodInput, FoodEstimate, ReviewedFoodPayload } from "./types/foodEstimate";
-import type { AppSection } from "./types/health";
+import type { AppSection, CheckIn } from "./types/health";
 import type { AppView, DailyGoal, DashboardTab, LogEntry, SavedMeal } from "./types/nutrition";
-import { HealthDayView } from "./components/health/HealthDayView";
-import { HealthMonthView } from "./components/health/HealthMonthView";
 import { HealthUnderConstructionPage } from "./components/health/HealthUnderConstructionPage";
-import { HealthWeekView } from "./components/health/HealthWeekView";
-
-/** Flip to true when wiring in HealthDayView / HealthWeekView / HealthMonthView. */
-const HEALTH_SECTION_ENABLED = false;
+import { CheckInDayView } from "./components/checkin/CheckInDayView";
+import { CheckInMonthView } from "./components/checkin/CheckInMonthView";
+import { CheckInWeekView } from "./components/checkin/CheckInWeekView";
+import { CheckInPage } from "./components/health/pages/CheckInPage";
 import { AppTopBar } from "./components/layout/AppTopBar";
 import { TOP_BAR_OFFSET } from "./lib/layout";
 import { HomeFooter } from "./components/layout/HomeFooter";
@@ -95,8 +96,15 @@ function App() {
   const [estimateSession, setEstimateSession] = useState<EstimateSession | null>(null);
   const [loadingNutrition, setLoadingNutrition] = useState(true);
   const [deleteEntryError, setDeleteEntryError] = useState<string | null>(null);
+  const [checkIn, setCheckIn] = useState<CheckIn | null>(null);
+  const [checkInVersion, setCheckInVersion] = useState(0);
+  const [loadingCheckIn, setLoadingCheckIn] = useState(false);
+  const [deleteCheckInError, setDeleteCheckInError] = useState<string | null>(null);
+  const [checkInLoadError, setCheckInLoadError] = useState<string | null>(null);
+  const [isDeletingCheckIn, setIsDeletingCheckIn] = useState(false);
 
   const bumpEntriesVersion = () => setEntriesVersion((v) => v + 1);
+  const bumpCheckInVersion = () => setCheckInVersion((v) => v + 1);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,6 +137,30 @@ function App() {
     };
   }, [selectedDate, entriesVersion]);
 
+  useEffect(() => {
+    if (appSection !== "check-in") return;
+    let cancelled = false;
+    setLoadingCheckIn(true);
+    setCheckInLoadError(null);
+    fetchCheckInForDate(selectedDate)
+      .then((loaded) => {
+        if (!cancelled) setCheckIn(loaded);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCheckInLoadError(
+            err instanceof Error ? err.message : "Could not load check-in.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCheckIn(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [appSection, selectedDate, checkInVersion]);
+
   const changeDate = (dateKey: string) => {
     if (isFutureDate(dateKey)) return;
     setSelectedDate(dateKey);
@@ -143,6 +175,12 @@ function App() {
   const switchSection = (section: AppSection) => {
     setAppSection(section);
     setDashboardTab("day");
+    setView({ type: "today" });
+  };
+
+  const openCheckInForm = () => {
+    if (isFutureDate(selectedDate)) return;
+    setView({ type: "check-in" });
   };
 
   const openSettings = () => setView({ type: "goals-settings" });
@@ -259,6 +297,32 @@ function App() {
     }
   };
 
+  const handleSaveCheckIn = async (payload: { weightKg: number | null; photoPaths: string[] }) => {
+    const saved = await upsertCheckIn({
+      checkInDate: selectedDate,
+      weightKg: payload.weightKg,
+      photoPaths: payload.photoPaths,
+    });
+    setCheckIn(saved);
+    bumpCheckInVersion();
+    setView({ type: "today" });
+  };
+
+  const handleDeleteCheckIn = async () => {
+    if (!checkIn) return;
+    setDeleteCheckInError(null);
+    setIsDeletingCheckIn(true);
+    try {
+      await deleteCheckIn(checkIn.id);
+      setCheckIn(null);
+      bumpCheckInVersion();
+    } catch (err) {
+      setDeleteCheckInError(err instanceof Error ? err.message : "Could not delete check-in.");
+    } finally {
+      setIsDeletingCheckIn(false);
+    }
+  };
+
   const handleSaveSettings = async ({ goal: updatedGoal, ai }: SettingsSavePayload) => {
     const [savedGoal, savedAi] = await Promise.all([
       updateGoals(updatedGoal),
@@ -268,6 +332,25 @@ function App() {
     setHasApiKey(savedAi.hasApiKey);
     setView({ type: "today" });
   };
+
+  if (view.type === "check-in") {
+    if (isFutureDate(selectedDate)) {
+      return (
+        <PageShell title="Check-in" onBack={() => setView({ type: "today" })}>
+          <p className="text-sm text-zinc-500">Cannot add check-ins for future dates.</p>
+        </PageShell>
+      );
+    }
+
+    return (
+      <CheckInPage
+        checkInDate={selectedDate}
+        initialCheckIn={checkIn ?? undefined}
+        onBack={() => setView({ type: "today" })}
+        onConfirm={handleSaveCheckIn}
+      />
+    );
+  }
 
   if (view.type === "goals-settings") {
     if (!goal) {
@@ -519,30 +602,38 @@ function App() {
           />
         )}
 
-        {appSection === "health" && !HEALTH_SECTION_ENABLED && <HealthUnderConstructionPage />}
+        {appSection === "health" && <HealthUnderConstructionPage />}
 
-        {appSection === "health" && HEALTH_SECTION_ENABLED && dashboardTab === "day" && (
-          <HealthDayView selectedDate={selectedDate} onDateChange={changeDate} />
+        {appSection === "check-in" && dashboardTab === "day" && (
+          <CheckInDayView
+            selectedDate={selectedDate}
+            checkIn={checkIn}
+            checkInLoading={loadingCheckIn}
+            checkInLoadError={checkInLoadError}
+            deleteCheckInError={deleteCheckInError}
+            isDeletingCheckIn={isDeletingCheckIn}
+            onDateChange={changeDate}
+            onAddCheckIn={openCheckInForm}
+            onEditCheckIn={openCheckInForm}
+            onDeleteCheckIn={() => void handleDeleteCheckIn()}
+            onDismissDeleteCheckInError={() => setDeleteCheckInError(null)}
+          />
         )}
 
-        {appSection === "health" && HEALTH_SECTION_ENABLED && dashboardTab === "week" && (
-          <HealthWeekView
+        {appSection === "check-in" && dashboardTab === "week" && (
+          <CheckInWeekView
             anchorDate={selectedDate}
             onAnchorChange={changeDate}
             onSelectDate={openDay}
           />
         )}
 
-        {appSection === "health" && HEALTH_SECTION_ENABLED && dashboardTab === "month" && (
-          <HealthMonthView
-            anchorDate={selectedDate}
-            onAnchorChange={changeDate}
-            onSelectDate={openDay}
-          />
+        {appSection === "check-in" && dashboardTab === "month" && (
+          <CheckInMonthView anchorDate={selectedDate} onAnchorChange={changeDate} />
         )}
       </div>
 
-      {(appSection !== "health" || HEALTH_SECTION_ENABLED) && (
+      {(appSection === "nutrition" || appSection === "check-in") && (
         <HomeFooter active={dashboardTab} onChange={setDashboardTab} />
       )}
     </>

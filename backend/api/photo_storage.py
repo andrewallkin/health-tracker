@@ -35,14 +35,34 @@ def resolve_image_url_for_response(
     return stored
 
 
-def validate_gcs_path_for_user(object_path: str, user_id: str) -> None:
-    settings = get_settings()
-    prefix = f"{settings.gcs_meal_photos_folder}/{user_id}/"
+def _validate_gcs_folder_path(object_path: str, user_id: str, folder: str) -> None:
+    prefix = f"{folder}/{user_id}/"
     if not object_path.startswith(prefix):
         raise HTTPException(status_code=404, detail="Photo not found")
     filename = object_path.removeprefix(prefix)
     if not filename or "/" in filename or filename != Path(filename).name:
         raise HTTPException(status_code=404, detail="Photo not found")
+
+
+def validate_gcs_path_for_user(object_path: str, user_id: str) -> None:
+    settings = get_settings()
+    allowed = (settings.gcs_meal_photos_folder, settings.gcs_check_in_photos_folder)
+    if not any(object_path.startswith(f"{folder}/{user_id}/") for folder in allowed):
+        raise HTTPException(status_code=404, detail="Photo not found")
+    for folder in allowed:
+        prefix = f"{folder}/{user_id}/"
+        if object_path.startswith(prefix):
+            filename = object_path.removeprefix(prefix)
+            if not filename or "/" in filename or filename != Path(filename).name:
+                raise HTTPException(status_code=404, detail="Photo not found")
+            return
+
+
+def validate_check_in_photo_path(reference: str, user_id: str) -> None:
+    if not is_gcs_object_path(reference):
+        raise HTTPException(status_code=400, detail="Invalid check-in photo path")
+    settings = get_settings()
+    _validate_gcs_folder_path(reference, user_id, settings.gcs_check_in_photos_folder)
 
 
 def resolve_meal_photo_path(reference: str, user_id: str) -> Path | None:

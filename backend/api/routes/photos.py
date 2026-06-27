@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
@@ -53,6 +54,7 @@ def _content_type_for_ext(ext: str) -> str:
 @router.post("", response_model=PhotoUploadResponse, status_code=201)
 async def upload_photo(
     file: UploadFile = File(...),
+    purpose: Literal["meal", "check-in"] = Query(default="meal"),
     user: UserRow = Depends(get_current_user),
     gcs: GCSService = Depends(get_gcs_service),
 ) -> PhotoUploadResponse:
@@ -72,6 +74,24 @@ async def upload_photo(
         raise HTTPException(status_code=400, detail="Empty file")
 
     settings = get_settings()
+
+    if purpose == "check-in":
+        if not gcs.is_available():
+            raise HTTPException(status_code=503, detail="Photo storage is not configured")
+        object_name = f"{user.id}/{filename}"
+        gcs_path = gcs.upload_image(
+            settings.gcs_check_in_photos_folder,
+            object_name,
+            data,
+            _content_type_for_ext(ext),
+        )
+        if gcs_path is None:
+            raise HTTPException(status_code=502, detail="Photo upload failed")
+        signed_url = gcs.generate_signed_url(gcs_path)
+        if signed_url is None:
+            raise HTTPException(status_code=502, detail="Photo upload failed")
+        return PhotoUploadResponse(path=gcs_path, url=signed_url)
+
     if gcs.is_available():
         object_name = f"{user.id}/{filename}"
         gcs_path = gcs.upload_image(
