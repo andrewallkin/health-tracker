@@ -1,8 +1,6 @@
 services:
   backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: ${DOCKER_IMAGE_BACKEND}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -10,17 +8,22 @@ services:
     depends_on: []
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     restart: always
     networks: [default, postgres-net]
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: ${DOCKER_IMAGE_FRONTEND}
     ports:
       - "${FRONTEND_PORT:-3000}:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: always
     networks: [default]
 
