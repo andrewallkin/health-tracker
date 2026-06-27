@@ -20,6 +20,11 @@ if str(REPO_ROOT) not in sys.path:
 
 os.environ.setdefault("SETTINGS_ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
+os.environ.setdefault("POSTGRES_USER", "test")
+os.environ.setdefault("POSTGRES_PASSWORD", "test")
+os.environ.setdefault("POSTGRES_HOST", "localhost")
+os.environ.setdefault("POSTGRES_PORT", "5432")
+os.environ.setdefault("POSTGRES_DB", "test")
 os.environ.pop("GCP_SERVICE_ACCOUNT_CREDENTIALS", None)
 os.environ.pop("GCS_IMAGES_BUCKET_NAME", None)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Populate SQLite with dummy nutrition data for development."""
+"""Populate PostgreSQL with dummy nutrition data for development."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from backend.auth import get_password_hash  # noqa: E402
-from backend.database import Base, SessionLocal, engine, init_db  # noqa: E402
+from backend.database import Base, SessionLocal, engine  # noqa: E402
 from backend.db_models import (  # noqa: E402
     AppSettingsRow,
     DailyGoalRow,
@@ -193,7 +193,7 @@ def clear_user_seed_data(db: Session, user_id: str) -> None:
 
 def reset_db() -> None:
     Base.metadata.drop_all(bind=engine)
-    init_db()
+    Base.metadata.create_all(bind=engine)
 
 
 def seed(email: str = "demo@example.com", password: str = "password123") -> None:
@@ -277,7 +277,7 @@ def main() -> None:
     if args.reset:
         reset_db()
     else:
-        init_db()
+        Base.metadata.create_all(bind=engine)
 
     seed(email=args.email, password=args.password)
 

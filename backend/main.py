@@ -8,14 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api.routes import auth, entries, estimate, goals, meals, photos, users
 from .api.routes import settings as settings_routes
 from .config import get_settings
-from .database import init_db
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     settings = get_settings()
     settings.meal_photos_dir.mkdir(parents=True, exist_ok=True)
-    init_db()
     yield
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 
@@ -11,7 +12,11 @@ load_dotenv(REPO_ROOT / ".env")
 
 
 class Settings:
-    db_path: Path = REPO_ROOT / "db.sqlite3"
+    postgres_user: str
+    postgres_password: str
+    postgres_host: str
+    postgres_port: str
+    postgres_db: str
     database_url: str
     encryption_key: str
     cors_origins: list[str]
@@ -25,9 +30,15 @@ class Settings:
     cookie_secure: bool
 
     def __init__(self) -> None:
-        self.database_url = os.environ.get(
-            "DATABASE_URL",
-            f"sqlite:///{REPO_ROOT / 'db.sqlite3'}",
+        self.postgres_user = os.environ["POSTGRES_USER"]
+        self.postgres_password = os.environ["POSTGRES_PASSWORD"]
+        self.postgres_host = os.environ["POSTGRES_HOST"]
+        self.postgres_port = os.environ["POSTGRES_PORT"]
+        self.postgres_db = os.environ["POSTGRES_DB"]
+        user = quote_plus(self.postgres_user)
+        password = quote_plus(self.postgres_password)
+        self.database_url = (
+            f"postgresql://{user}:{password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
         self.encryption_key = os.environ.get("SETTINGS_ENCRYPTION_KEY", "")
         origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173")
