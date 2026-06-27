@@ -17,7 +17,6 @@ The app has three main sections:
 | [`notebooks/`](notebooks/) | Jupyter notebooks for Garmin API and food vision demos |
 | [`scripts/`](scripts/) | Utility scripts (Garmin demo, DB seeding) |
 | [`tests/fixtures/`](tests/fixtures/) | Test input images for notebooks and integration tests |
-| [`docs/`](docs/) | Product specs and roadmap |
 
 ## Quick start
 
