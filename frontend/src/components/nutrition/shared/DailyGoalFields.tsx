@@ -1,13 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { DailyGoal } from "../../../types/nutrition";
-
-export interface DailyGoalFieldValues {
-  calories: string;
-  protein: string;
-  carbs: string;
-  fat: string;
-}
+import type { DailyGoalFieldValues } from "./dailyGoalFields";
 
 interface DailyGoalFieldsProps {
   values: DailyGoalFieldValues;
@@ -64,28 +57,6 @@ export function DailyGoalFields({ values, onChange }: DailyGoalFieldsProps) {
   );
 }
 
-export function dailyGoalFromFieldValues(values: DailyGoalFieldValues): DailyGoal {
-  return {
-    calories: parsePositive(values.calories),
-    protein: parseNonNegative(values.protein),
-    carbs: parseNonNegative(values.carbs),
-    fat: parseNonNegative(values.fat),
-  };
-}
-
-export function fieldValuesFromDailyGoal(goal: DailyGoal): DailyGoalFieldValues {
-  return {
-    calories: String(goal.calories),
-    protein: String(goal.protein),
-    carbs: String(goal.carbs),
-    fat: String(goal.fat),
-  };
-}
-
-export function isValidDailyGoal(goal: DailyGoal): boolean {
-  return goal.calories > 0;
-}
-
 const inputClass =
   "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-white/20 focus:bg-white/8";
 
@@ -96,16 +67,4 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </label>
   );
-}
-
-function parseNonNegative(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.round(parsed);
-}
-
-function parsePositive(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-  return Math.round(parsed);
 }

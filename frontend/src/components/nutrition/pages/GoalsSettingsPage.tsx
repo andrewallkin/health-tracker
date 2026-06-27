@@ -8,13 +8,13 @@ import {
 import type { DailyGoal } from "../../../types/nutrition";
 import { useConfirm } from "../../../context/useConfirm";
 import { PageShell } from "../../layout/PageShell";
+import { DailyGoalFields } from "../shared/DailyGoalFields";
 import {
-  DailyGoalFields,
   dailyGoalFromFieldValues,
   fieldValuesFromDailyGoal,
   isValidDailyGoal,
   type DailyGoalFieldValues,
-} from "../shared/DailyGoalFields";
+} from "../shared/dailyGoalFields";
 
 export interface SettingsSavePayload {
   goal: DailyGoal;

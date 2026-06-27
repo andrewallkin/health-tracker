@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { DailyGoalFields } from "../components/nutrition/shared/DailyGoalFields";
 import {
-  DailyGoalFields,
   dailyGoalFromFieldValues,
   fieldValuesFromDailyGoal,
   isValidDailyGoal,
   type DailyGoalFieldValues,
-} from "../components/nutrition/shared/DailyGoalFields";
+} from "../components/nutrition/shared/dailyGoalFields";
 import type { DailyGoal } from "../types/nutrition";
 import { DEFAULT_DAILY_GOAL, fetchGoals, updateGoals } from "../lib/api";
 import { getErrorMessage } from "../lib/errors";
