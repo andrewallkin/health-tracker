@@ -164,7 +164,7 @@ export function NewMealPage({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Mince with rice"
+            placeholder="Chicken, rice, and vegetables"
             className={inputClass}
           />
         </Field>
@@ -175,7 +175,7 @@ export function NewMealPage({
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Ingredients, notes…"
+                placeholder="One serving · grilled chicken, ½ cup rice…"
                 rows={3}
                 className={`${inputClass} resize-none`}
               />
@@ -226,7 +226,7 @@ export function NewMealPage({
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Notes about this combination…"
+                placeholder="Weekday lunch prep, serves 1…"
                 rows={2}
                 className={`${inputClass} resize-none`}
               />

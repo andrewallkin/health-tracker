@@ -159,7 +159,7 @@ export function QuickLogPage({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Lunch bowl"
+            placeholder="Chicken sandwich"
             className={inputClass}
           />
         </Field>

@@ -24,7 +24,7 @@ interface SavedMealsPageProps {
 export function SavedMealsPage({
   meals,
   foods,
-  initialTab = "meals",
+  initialTab = "foods",
   onBack,
   onCreateNewMeal,
   onCreateNewFood,
@@ -63,8 +63,8 @@ export function SavedMealsPage({
   return (
     <PageShell title="Library" subtitle="Meals and reusable foods" onBack={onBack}>
       <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-white/4 p-1">
-        <TabButton active={isMealsTab} label="Meals" onClick={() => setTab("meals")} />
         <TabButton active={!isMealsTab} label="Foods" onClick={() => setTab("foods")} />
+        <TabButton active={isMealsTab} label="Meals" onClick={() => setTab("meals")} />
       </div>
 
       <div className="mb-4 flex gap-2">
@@ -74,7 +74,7 @@ export function SavedMealsPage({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={isMealsTab ? "Search meals…" : "Search foods…"}
+            placeholder="Search your library…"
             className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pr-3 pl-9 text-base text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-white/20 focus:bg-white/8"
           />
         </div>

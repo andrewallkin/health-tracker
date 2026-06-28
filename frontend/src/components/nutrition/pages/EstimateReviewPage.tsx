@@ -43,7 +43,7 @@ export function EstimateReviewPage({
   const [protein, setProtein] = useState(String(estimate.macros_g.protein));
   const [carbs, setCarbs] = useState(String(estimate.macros_g.carbs));
   const [fat, setFat] = useState(String(estimate.macros_g.fat));
-  const [addToDay, setAddToDay] = useState(true);
+  const [addToDay, setAddToDay] = useState(false);
   const [saveAsMeal, setSaveAsMeal] = useState(false);
   const [saveAsFood, setSaveAsFood] = useState(false);
   const [foodTags, setFoodTags] = useState<FoodTag[]>([]);
@@ -170,6 +170,7 @@ export function EstimateReviewPage({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            placeholder="Chicken sandwich"
             className={inputClass}
           />
         </Field>

@@ -105,7 +105,7 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Chilli mince"
+            placeholder="Greek yogurt"
             className={inputClass}
           />
         </Field>
@@ -114,7 +114,7 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Portion notes, e.g. one bowl, 30g cheese…"
+            placeholder="Per 100g · or one medium apple…"
             rows={2}
             className={`${inputClass} resize-none`}
           />

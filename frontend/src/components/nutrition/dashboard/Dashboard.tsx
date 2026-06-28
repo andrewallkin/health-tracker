@@ -19,6 +19,7 @@ interface DashboardProps {
   onDeleteEntry: (id: string) => void;
   onEditEntry: (id: string) => void;
   onAddFood?: () => void;
+  onOpenLibrary?: () => void;
 }
 
 export function Dashboard({
@@ -31,6 +32,7 @@ export function Dashboard({
   onDeleteEntry,
   onEditEntry,
   onAddFood,
+  onOpenLibrary,
 }: DashboardProps) {
   const summary = getDailySummary(entries, goal);
   const title = isToday(selectedDate) ? "Today" : formatDayHeader(selectedDate);
@@ -63,10 +65,20 @@ export function Dashboard({
         <button
           type="button"
           onClick={onAddFood}
-          className="mb-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 py-3 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/20 transition hover:bg-amber-400 active:scale-[0.99]"
+          className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 py-3 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/20 transition hover:bg-amber-400 active:scale-[0.99]"
         >
           <PlusIcon />
           Add food
+        </button>
+      )}
+
+      {onOpenLibrary && (
+        <button
+          type="button"
+          onClick={onOpenLibrary}
+          className="mb-6 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/4 py-3 text-sm font-semibold text-zinc-100 transition hover:border-white/20 hover:bg-white/6 active:scale-[0.99]"
+        >
+          Library
         </button>
       )}
 

@@ -141,7 +141,7 @@ export function FoodComposer({
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search foods…"
+          placeholder="Search saved foods…"
           className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-white/20"
         />
 

@@ -111,7 +111,7 @@ export function AppFlowViews({
         onOpenSettings={onOpenSettings}
         onSelect={(option) => {
           if (option === "saved-meals") {
-            onViewChange({ type: "saved-meals" });
+            onViewChange({ type: "saved-meals", tab: "foods" });
           } else if (option === "quick-log") {
             onViewChange({ type: "quick-log" });
           } else if (option === "describe-photo") {
@@ -171,7 +171,7 @@ export function AppFlowViews({
           } else if (saveAsFood) {
             onViewChange({ type: "saved-meals", tab: "foods" });
           } else {
-            onViewChange({ type: "saved-meals" });
+            onViewChange({ type: "saved-meals", tab: "meals" });
           }
         }}
       />
@@ -181,11 +181,11 @@ export function AppFlowViews({
   if (view.type === "saved-meals") {
     return (
       <SavedMealsPage
-        key={view.tab ?? "meals"}
+        key={view.tab ?? "foods"}
         meals={savedMeals}
         foods={savedFoods}
         initialTab={view.tab}
-        onBack={() => onViewChange({ type: "add-food" })}
+        onBack={() => onViewChange({ type: "today" })}
         onCreateNewMeal={() => onViewChange({ type: "new-meal" })}
         onCreateNewFood={() => onViewChange({ type: "new-food" })}
         onSelectMeal={(mealId) => onViewChange({ type: "log-meal", mealId })}
@@ -237,11 +237,11 @@ export function AppFlowViews({
     return (
       <NewMealPage
         savedFoods={savedFoods}
-        onBack={() => onViewChange({ type: "saved-meals" })}
+        onBack={() => onViewChange({ type: "saved-meals", tab: "meals" })}
         onManageFoods={() => onViewChange({ type: "saved-meals", tab: "foods" })}
         onSave={async (payload) => {
           await addSavedMeal(payload);
-          onViewChange({ type: "saved-meals" });
+          onViewChange({ type: "saved-meals", tab: "meals" });
         }}
       />
     );
@@ -251,7 +251,7 @@ export function AppFlowViews({
     const meal = findSavedMeal(savedMeals, view.mealId);
     if (!meal) {
       return (
-        <PageShell title="Meal not found" onBack={() => onViewChange({ type: "saved-meals" })}>
+        <PageShell title="Meal not found" onBack={() => onViewChange({ type: "saved-meals", tab: "meals" })}>
           <p className="text-sm text-zinc-500">This saved meal could not be loaded.</p>
         </PageShell>
       );
@@ -261,15 +261,15 @@ export function AppFlowViews({
       <NewMealPage
         savedFoods={savedFoods}
         initialMeal={meal}
-        onBack={() => onViewChange({ type: "saved-meals" })}
+        onBack={() => onViewChange({ type: "saved-meals", tab: "meals" })}
         onManageFoods={() => onViewChange({ type: "saved-meals", tab: "foods" })}
         onSave={async (payload) => {
           await editSavedMeal(view.mealId, payload);
-          onViewChange({ type: "saved-meals" });
+          onViewChange({ type: "saved-meals", tab: "meals" });
         }}
         onDelete={async () => {
           await removeSavedMeal(view.mealId);
-          onViewChange({ type: "saved-meals" });
+          onViewChange({ type: "saved-meals", tab: "meals" });
         }}
       />
     );
@@ -315,7 +315,9 @@ export function AppFlowViews({
         isEditing={Boolean(view.entryId)}
         initialSlot={editingEntry?.slot}
         initialServings={editingEntry?.servings}
-        onBack={() => onViewChange(view.entryId ? { type: "today" } : { type: "saved-meals" })}
+        onBack={() =>
+          onViewChange(view.entryId ? { type: "today" } : { type: "saved-meals", tab: "meals" })
+        }
         onConfirm={async (payload) => {
           if (view.entryId) {
             await updateSavedMealEntry(view.entryId, payload, view.mealId);

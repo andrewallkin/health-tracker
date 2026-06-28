@@ -20,8 +20,8 @@ const options: {
 }[] = [
   {
     id: "saved-meals",
-    title: "Saved meals",
-    description: "Pick from your meal library and log with servings.",
+    title: "Library",
+    description: "Browse saved meals and foods, then log or edit.",
     icon: <BookmarkIcon />,
     accent: "border-amber-500/30 bg-amber-500/10 text-amber-400",
     available: true,
