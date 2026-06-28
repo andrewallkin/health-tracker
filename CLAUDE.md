@@ -8,6 +8,25 @@ Three main app sections:
 - **Check-in** — daily weight and progress photos
 - **Health** — Garmin-style activity views (mock data only; live Garmin not wired yet)
 
+## Agent workflow (Superpowers)
+
+**Always use the Superpowers plugin.** Before responding or acting, read the relevant skill from the installed Superpowers plugin (start with `using-superpowers`). If a skill might apply—even slightly—invoke it first; do not skip skills because a task feels simple.
+
+| Situation | Skill |
+|-----------|-------|
+| Any new conversation | `using-superpowers` |
+| New feature, UI change, or behavior change | `brainstorming` (before implementation) |
+| Multi-step spec or plan | `writing-plans` → `executing-plans` |
+| Bug or test failure | `systematic-debugging` |
+| Feature or bugfix implementation | `test-driven-development` |
+| Claiming work is done | `verification-before-completion` |
+| Major step complete | `requesting-code-review` (via code-reviewer subagent) |
+| Branch ready to integrate | `finishing-a-development-branch` |
+| 2+ independent tasks | `dispatching-parallel-agents` |
+| Isolated feature work | `using-git-worktrees` |
+
+Process skills (brainstorming, debugging, planning) come before implementation skills. Follow rigid skills (TDD, debugging) exactly. User instructions in this file override skill defaults when they conflict.
+
 ## Repository layout
 
 | Path | Purpose |
