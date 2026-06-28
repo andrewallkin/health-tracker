@@ -6,11 +6,13 @@ import { buildLogEntryFromSavedMeal } from "./logEntry";
 const meal: SavedMeal = {
   id: "meal-1",
   name: "Chicken bowl",
+  kind: "manual",
   calories: 400,
   protein: 30,
   carbs: 40,
   fat: 10,
   imageUrl: "/api/photos/meal.jpg",
+  items: [],
 };
 
 describe("buildLogEntryFromSavedMeal", () => {

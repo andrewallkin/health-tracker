@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -61,6 +61,32 @@ class DailyGoalRow(Base):
     __table_args__ = (CheckConstraint("calories > 0", name="daily_goals_calories_positive"),)
 
 
+class SavedFoodRow(Base):
+    __tablename__ = "saved_foods"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    calories: Mapped[int] = mapped_column(Integer, nullable=False)
+    protein: Mapped[float] = mapped_column(Float, nullable=False)
+    carbs: Mapped[float] = mapped_column(Float, nullable=False)
+    fat: Mapped[float] = mapped_column(Float, nullable=False)
+    tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    meal_items: Mapped[list[SavedMealItemRow]] = relationship(
+        "SavedMealItemRow",
+        back_populates="food",
+    )
+
+
 class SavedMealRow(Base):
     __tablename__ = "saved_meals"
 
@@ -74,12 +100,43 @@ class SavedMealRow(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
     calories: Mapped[int] = mapped_column(Integer, nullable=False)
     protein: Mapped[float] = mapped_column(Float, nullable=False)
     carbs: Mapped[float] = mapped_column(Float, nullable=False)
     fat: Mapped[float] = mapped_column(Float, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    items: Mapped[list[SavedMealItemRow]] = relationship(
+        "SavedMealItemRow",
+        back_populates="meal",
+        cascade="all, delete-orphan",
+        order_by="SavedMealItemRow.sort_order",
+    )
+
+
+class SavedMealItemRow(Base):
+    __tablename__ = "saved_meal_items"
+    __table_args__ = (UniqueConstraint("meal_id", "food_id", name="uq_saved_meal_items_meal_food"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    meal_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("saved_meals.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    food_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("saved_foods.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    meal: Mapped[SavedMealRow] = relationship("SavedMealRow", back_populates="items")
+    food: Mapped[SavedFoodRow] = relationship("SavedFoodRow", back_populates="meal_items")
 
 
 class LogEntryRow(Base):

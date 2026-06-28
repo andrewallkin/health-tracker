@@ -1,6 +1,7 @@
 import type { DescribeFoodInput, FoodEstimate } from "../types/foodEstimate";
 import type { CheckIn, CheckInUpsertPayload } from "../types/health";
-import type { DailyGoal, LogEntry, SavedMeal } from "../types/nutrition";
+import type { DailyGoal, LogEntry, SavedFood, SavedMeal } from "../types/nutrition";
+import type { NewSavedFoodPayload } from "./savedFood";
 import type { NewSavedMealPayload } from "./savedMeal";
 import { API_BASE, ApiError, apiFetch, parseErrorMessage, request } from "./client";
 
@@ -92,6 +93,52 @@ export async function updateSavedMeal(
 
 export async function deleteSavedMeal(id: string): Promise<void> {
   await request<void>(`/meals/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function fetchSavedFoods(): Promise<SavedFood[]> {
+  return request<SavedFood[]>("/foods");
+}
+
+export async function createSavedFood(payload: NewSavedFoodPayload): Promise<SavedFood> {
+  return request<SavedFood>("/foods", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateSavedFood(
+  id: string,
+  payload: Partial<NewSavedFoodPayload>,
+): Promise<SavedFood> {
+  return request<SavedFood>(`/foods/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteSavedFood(id: string, confirm = false): Promise<void> {
+  const suffix = confirm ? "?confirm=true" : "";
+  await request<void>(`/foods/${encodeURIComponent(id)}${suffix}`, { method: "DELETE" });
+}
+
+export async function tryDeleteSavedFood(
+  id: string,
+  confirm = false,
+): Promise<{ ok: true } | { ok: false; status: number; detail: unknown }> {
+  const suffix = confirm ? "?confirm=true" : "";
+  const response = await apiFetch(`/foods/${encodeURIComponent(id)}${suffix}`, {
+    method: "DELETE",
+  });
+  if (response.ok) return { ok: true };
+  let detail: unknown = response.statusText;
+  try {
+    detail = (await response.json()).detail;
+  } catch {
+    // ignore
+  }
+  return { ok: false, status: response.status, detail };
 }
 
 export async function uploadMealPhoto(

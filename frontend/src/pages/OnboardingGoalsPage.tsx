@@ -7,7 +7,7 @@ import {
   fieldValuesFromDailyGoal,
   isValidDailyGoal,
   type DailyGoalFieldValues,
-} from "../components/nutrition/shared/dailyGoalFields";
+} from "../components/nutrition/shared/dailyGoalFieldUtils";
 import type { DailyGoal } from "../types/nutrition";
 import { DEFAULT_DAILY_GOAL, fetchGoals, updateGoals } from "../lib/api";
 import { getErrorMessage } from "../lib/errors";

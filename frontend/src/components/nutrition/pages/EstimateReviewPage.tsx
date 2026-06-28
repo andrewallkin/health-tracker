@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { addToDayLabel, confirmLogLabel } from "../../../lib/logLabels";
+import { parseNonNegative, parsePositive } from "../../../lib/numericInput";
 import { defaultMealSlot } from "../../../lib/quickLog";
 import type {
   DescribeFoodInput,
@@ -7,10 +8,12 @@ import type {
   ReviewConfirmOptions,
   ReviewedFoodPayload,
 } from "../../../types/foodEstimate";
-import type { MealSlot } from "../../../types/nutrition";
+import type { MealSlot, FoodTag } from "../../../types/nutrition";
+import { FOOD_TAG_LABELS, FOOD_TAGS } from "../../../lib/foodTags";
 import { MacroChips } from "../dashboard/MacroChips";
 import { MealPhotoView } from "../shared/MealPhotoView";
 import { PageShell } from "../../layout/PageShell";
+import { DecimalInput } from "../../shared/DecimalInput";
 
 interface EstimateReviewPageProps {
   input: DescribeFoodInput;
@@ -40,8 +43,10 @@ export function EstimateReviewPage({
   const [protein, setProtein] = useState(String(estimate.macros_g.protein));
   const [carbs, setCarbs] = useState(String(estimate.macros_g.carbs));
   const [fat, setFat] = useState(String(estimate.macros_g.fat));
-  const [addToDay, setAddToDay] = useState(true);
+  const [addToDay, setAddToDay] = useState(false);
   const [saveAsMeal, setSaveAsMeal] = useState(false);
+  const [saveAsFood, setSaveAsFood] = useState(false);
+  const [foodTags, setFoodTags] = useState<FoodTag[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,14 +62,20 @@ export function EstimateReviewPage({
   };
 
   const isValid = name.trim().length > 0 && payload.calories > 0;
-  const canConfirm = isValid && (addToDay || saveAsMeal);
+  const canConfirm = isValid && (addToDay || saveAsMeal || saveAsFood);
+
+  const toggleFoodTag = (tag: FoodTag) => {
+    setFoodTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
+  };
 
   const handleConfirm = async () => {
     if (!canConfirm) return;
     setIsSaving(true);
     setError(null);
     try {
-      await onConfirm(payload, { addToDay, saveAsMeal });
+      await onConfirm(payload, { addToDay, saveAsMeal, saveAsFood, foodTags });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save.");
     } finally {
@@ -85,7 +96,7 @@ export function EstimateReviewPage({
             onClick={handleConfirm}
             className="pointer-events-auto w-full max-w-[448px] rounded-full bg-amber-500 py-3.5 text-sm font-semibold text-zinc-900 shadow-lg shadow-black/30 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isSaving ? "Saving…" : confirmLogLabel(addToDay, saveAsMeal, logDate)}
+            {isSaving ? "Saving…" : confirmLogLabel(addToDay, saveAsMeal, saveAsFood, logDate)}
           </button>
         </div>
       }
@@ -110,40 +121,21 @@ export function EstimateReviewPage({
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition</h2>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Calories (kcal)">
-              <input
-                type="number"
-                min={1}
+              <DecimalInput
+                allowDecimal={false}
                 value={calories}
-                onChange={(e) => setCalories(e.target.value)}
+                onChange={setCalories}
                 className={inputClass}
               />
             </Field>
             <Field label="Protein (g)">
-              <input
-                type="number"
-                min={0}
-                value={protein}
-                onChange={(e) => setProtein(e.target.value)}
-                className={inputClass}
-              />
+              <DecimalInput value={protein} onChange={setProtein} className={inputClass} />
             </Field>
             <Field label="Carbs (g)">
-              <input
-                type="number"
-                min={0}
-                value={carbs}
-                onChange={(e) => setCarbs(e.target.value)}
-                className={inputClass}
-              />
+              <DecimalInput value={carbs} onChange={setCarbs} className={inputClass} />
             </Field>
             <Field label="Fat (g)">
-              <input
-                type="number"
-                min={0}
-                value={fat}
-                onChange={(e) => setFat(e.target.value)}
-                className={inputClass}
-              />
+              <DecimalInput value={fat} onChange={setFat} className={inputClass} />
             </Field>
           </div>
         </section>
@@ -178,6 +170,7 @@ export function EstimateReviewPage({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            placeholder="Chicken sandwich"
             className={inputClass}
           />
         </Field>
@@ -214,10 +207,34 @@ export function EstimateReviewPage({
             <ToggleOption
               checked={saveAsMeal}
               onChange={setSaveAsMeal}
-              label="Save to library"
-              description="Reuse this meal later"
+              label="Save as meal"
+              description="Reuse this combination later"
+            />
+            <ToggleOption
+              checked={saveAsFood}
+              onChange={setSaveAsFood}
+              label="Save as food"
+              description="Add to your food library"
             />
           </div>
+          {saveAsFood && (
+            <div className="mt-3 flex flex-wrap gap-2 border-t border-white/10 pt-3">
+              {FOOD_TAGS.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => toggleFoodTag(tag)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                    foodTags.includes(tag)
+                      ? "border-amber-500/50 bg-amber-500/15 text-amber-400"
+                      : "border-white/10 bg-white/4 text-zinc-400 hover:border-white/20"
+                  }`}
+                >
+                  {FOOD_TAG_LABELS[tag]}
+                </button>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </PageShell>
@@ -290,16 +307,4 @@ function confidenceColor(confidence: FoodEstimate["confidence"]): string {
   if (confidence === "high") return "text-green-400 bg-green-500/15";
   if (confidence === "medium") return "text-amber-400 bg-amber-500/15";
   return "text-rose-400 bg-rose-500/15";
-}
-
-function parseNonNegative(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.round(parsed);
-}
-
-function parsePositive(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-  return Math.round(parsed);
 }

@@ -2,33 +2,47 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   createLogEntry,
+  createSavedFood,
   createSavedMeal,
   deleteLogEntry,
   deleteSavedMeal,
   fetchAiSettings,
   fetchEntriesForDate,
   fetchGoals,
+  fetchSavedFoods,
   fetchSavedMeals,
+  tryDeleteSavedFood,
   updateAiSettings,
   updateGoals,
   updateLogEntry,
+  updateSavedFood,
   updateSavedMeal,
 } from "../lib/api";
+import { ApiError } from "../lib/client";
+import { useConfirm } from "../context/useConfirm";
 import { buildLogEntryFromSavedMeal, type LogMealPayload } from "../lib/logEntry";
 import {
   buildQuickLogEntry,
   type QuickLogPayload,
   updateQuickLogEntry,
 } from "../lib/quickLog";
+import {
+  formatAffectedMealNames,
+  getMealsUsingFood,
+  parseFoodDeleteConflict,
+  type NewSavedFoodPayload,
+} from "../lib/savedFood";
 import { findSavedMeal, type NewSavedMealPayload } from "../lib/savedMeal";
 import type { SettingsSavePayload } from "../components/nutrition/pages/GoalsSettingsPage";
-import type { DailyGoal, LogEntry, SavedMeal } from "../types/nutrition";
+import type { DailyGoal, LogEntry, SavedFood, SavedMeal } from "../types/nutrition";
 
 export function useNutritionData(selectedDate: string) {
+  const confirm = useConfirm();
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [entriesReloadKey, setEntriesReloadKey] = useState(0);
   const [goal, setGoal] = useState<DailyGoal | null>(null);
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
+  const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [loadingNutrition, setLoadingNutrition] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -41,10 +55,11 @@ export function useNutritionData(selectedDate: string) {
   const retryBootstrap = useCallback(() => {
     setLoadingNutrition(true);
     setLoadError(null);
-    Promise.all([fetchGoals(), fetchSavedMeals(), fetchAiSettings()])
-      .then(([loadedGoal, meals, ai]) => {
+    Promise.all([fetchGoals(), fetchSavedMeals(), fetchSavedFoods(), fetchAiSettings()])
+      .then(([loadedGoal, meals, foods, ai]) => {
         setGoal(loadedGoal);
         setSavedMeals(meals);
+        setSavedFoods(foods);
         setHasApiKey(ai.hasApiKey);
       })
       .catch((err) => {
@@ -58,11 +73,12 @@ export function useNutritionData(selectedDate: string) {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([fetchGoals(), fetchSavedMeals(), fetchAiSettings()])
-      .then(([loadedGoal, meals, ai]) => {
+    Promise.all([fetchGoals(), fetchSavedMeals(), fetchSavedFoods(), fetchAiSettings()])
+      .then(([loadedGoal, meals, foods, ai]) => {
         if (!cancelled) {
           setGoal(loadedGoal);
           setSavedMeals(meals);
+          setSavedFoods(foods);
           setHasApiKey(ai.hasApiKey);
         }
       })
@@ -197,6 +213,75 @@ export function useNutritionData(selectedDate: string) {
     );
   };
 
+  const addSavedFood = async (payload: NewSavedFoodPayload) => {
+    const created = await createSavedFood(payload);
+    setSavedFoods((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+  };
+
+  const editSavedFood = async (foodId: string, payload: Partial<NewSavedFoodPayload>) => {
+    const updated = await updateSavedFood(foodId, payload);
+    setSavedFoods((prev) =>
+      prev
+        .map((food) => (food.id === foodId ? updated : food))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
+    const meals = await fetchSavedMeals();
+    setSavedMeals(meals);
+  };
+
+  const removeSavedFood = async (foodId: string) => {
+    const affectedMeals = getMealsUsingFood(savedMeals, foodId);
+
+    const promptDelete = (message: string) =>
+      confirm({
+        title: "Delete saved food?",
+        message,
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+
+    if (affectedMeals.length > 0) {
+      const mealList = formatAffectedMealNames(affectedMeals);
+      const ok = await promptDelete(
+        `This food is used in: ${mealList}. Remove it from those meals and delete the food?`,
+      );
+      if (!ok) return;
+      const result = await tryDeleteSavedFood(foodId, true);
+      if (!result.ok) {
+        throw new ApiError(
+          result.status,
+          typeof result.detail === "string" ? result.detail : "Could not delete saved food.",
+        );
+      }
+    } else {
+      const ok = await promptDelete("This removes the food from your library.");
+      if (!ok) return;
+      let result = await tryDeleteSavedFood(foodId, false);
+      if (!result.ok && result.status === 409) {
+        const conflict = parseFoodDeleteConflict(result.detail);
+        const mealList =
+          conflict && conflict.affectedMealNames.length > 0
+            ? conflict.affectedMealNames.join(", ")
+            : "saved meals";
+        const retryOk = await promptDelete(
+          `This food is used in: ${mealList}. Remove it from those meals and delete the food?`,
+        );
+        if (!retryOk) return;
+        result = await tryDeleteSavedFood(foodId, true);
+      }
+      if (!result.ok) {
+        throw new ApiError(
+          result.status,
+          typeof result.detail === "string" ? result.detail : "Could not delete saved food.",
+        );
+      }
+    }
+
+    setSavedFoods((prev) => prev.filter((food) => food.id !== foodId));
+    const meals = await fetchSavedMeals();
+    setSavedMeals(meals);
+  };
+
   const handleDeleteEntry = async (id: string) => {
     setDeleteEntryError(null);
     try {
@@ -224,6 +309,7 @@ export function useNutritionData(selectedDate: string) {
     entriesReloadKey,
     goal,
     savedMeals,
+    savedFoods,
     hasApiKey,
     loadingNutrition,
     loadError,
@@ -239,6 +325,9 @@ export function useNutritionData(selectedDate: string) {
     addSavedMeal,
     editSavedMeal,
     removeSavedMeal,
+    addSavedFood,
+    editSavedFood,
+    removeSavedFood,
     handleDeleteEntry,
     handleSaveSettings,
     dismissDeleteEntryError: () => setDeleteEntryError(null),

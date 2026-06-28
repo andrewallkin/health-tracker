@@ -110,7 +110,7 @@ export function DescribeFoodPage({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={4}
-            placeholder="e.g. sweet potato chilli mince, one bowl"
+            placeholder="Large salad with chicken, vinaigrette on the side"
             className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-white/20 focus:bg-white/8"
           />
         </label>

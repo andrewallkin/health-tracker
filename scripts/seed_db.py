@@ -21,6 +21,8 @@ from backend.db_models import (  # noqa: E402
     AppSettingsRow,
     DailyGoalRow,
     LogEntryRow,
+    SavedFoodRow,
+    SavedMealItemRow,
     SavedMealRow,
     UserRow,
 )
@@ -84,6 +86,54 @@ SAVED_MEALS = [
         "fat": 12,
     },
 ]
+
+SAVED_FOODS = [
+    {
+        "id": "food-1",
+        "name": "Chilli mince",
+        "description": "One portion of lean beef chilli.",
+        "calories": 300,
+        "protein": 25,
+        "carbs": 10,
+        "fat": 15,
+        "tags": ["protein"],
+    },
+    {
+        "id": "food-2",
+        "name": "Rice",
+        "description": "Cooked jasmine rice.",
+        "calories": 200,
+        "protein": 4,
+        "carbs": 45,
+        "fat": 1,
+        "tags": ["carb"],
+    },
+    {
+        "id": "food-3",
+        "name": "Avocado",
+        "description": "Half an avocado.",
+        "calories": 120,
+        "protein": 2,
+        "carbs": 6,
+        "fat": 11,
+        "tags": ["topping"],
+    },
+]
+
+COMPOSED_MEAL = {
+    "id": "meal-composed-1",
+    "name": "Mince bowl with rice",
+    "description": "Chilli mince with a side of rice.",
+    "kind": "composed",
+    "calories": 500,
+    "protein": 29,
+    "carbs": 55,
+    "fat": 16,
+    "items": [
+        {"food_id": "food-1", "quantity": 1, "sort_order": 0},
+        {"food_id": "food-2", "quantity": 1, "sort_order": 1},
+    ],
+}
 
 TODAY_ENTRIES = [
     {
@@ -188,6 +238,7 @@ def clear_user_seed_data(db: Session, user_id: str) -> None:
     """Remove existing nutrition rows for a user before re-seeding."""
     db.query(LogEntryRow).filter(LogEntryRow.user_id == user_id).delete(synchronize_session=False)
     db.query(SavedMealRow).filter(SavedMealRow.user_id == user_id).delete(synchronize_session=False)
+    db.query(SavedFoodRow).filter(SavedFoodRow.user_id == user_id).delete(synchronize_session=False)
     db.query(DailyGoalRow).filter(DailyGoalRow.user_id == user_id).delete(synchronize_session=False)
     db.query(AppSettingsRow).filter(AppSettingsRow.user_id == user_id).delete(synchronize_session=False)
 
@@ -215,7 +266,24 @@ def seed(email: str = "demo@example.com", password: str = "password123") -> None
         db.add(DailyGoalRow(user_id=user.id, **DAILY_GOAL))
 
         for meal in SAVED_MEALS:
-            db.add(SavedMealRow(user_id=user.id, image_url=None, **meal))
+            db.add(SavedMealRow(user_id=user.id, image_url=None, kind="manual", **meal))
+
+        for food in SAVED_FOODS:
+            db.add(SavedFoodRow(user_id=user.id, **food))
+
+        composed = COMPOSED_MEAL.copy()
+        items = composed.pop("items")
+        db.add(SavedMealRow(user_id=user.id, image_url=None, **composed))
+        for item in items:
+            db.add(
+                SavedMealItemRow(
+                    id=str(uuid.uuid4()),
+                    meal_id=composed["id"],
+                    food_id=item["food_id"],
+                    quantity=item["quantity"],
+                    sort_order=item["sort_order"],
+                ),
+            )
 
         db.add(
             AppSettingsRow(
@@ -261,8 +329,8 @@ def seed(email: str = "demo@example.com", password: str = "password123") -> None
 
         db.commit()
         print(
-            f"Seeded user {user.email} with daily goal, {len(SAVED_MEALS)} saved meals, "
-            f"and log entries through {today.isoformat()}"
+            f"Seeded user {user.email} with daily goal, {len(SAVED_MEALS) + 1} saved meals, "
+            f"{len(SAVED_FOODS)} saved foods, and log entries through {today.isoformat()}"
         )
     finally:
         db.close()

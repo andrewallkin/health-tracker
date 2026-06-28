@@ -14,8 +14,21 @@ export function addToDayLabel(dateKey: string): string {
   return `Add to ${formatShortDate(dateKey)}`;
 }
 
-export function confirmLogLabel(addToDay: boolean, saveAsMeal: boolean, dateKey: string): string {
-  if (addToDay && saveAsMeal) return `${addToDayLabel(dateKey)} & save meal`;
-  if (addToDay) return addToDayLabel(dateKey);
-  return "Save meal";
+export function confirmLogLabel(
+  addToDay: boolean,
+  saveAsMeal: boolean,
+  saveAsFood: boolean,
+  dateKey: string,
+): string {
+  const parts: string[] = [];
+  if (addToDay) parts.push(addToDayLabel(dateKey));
+  if (saveAsMeal) parts.push("save meal");
+  if (saveAsFood) parts.push("save food");
+  if (parts.length === 0) return "Confirm";
+  if (parts.length === 1) {
+    if (saveAsMeal && !addToDay) return "Save meal";
+    if (saveAsFood && !addToDay) return "Save food";
+    return parts[0]!;
+  }
+  return parts.join(" & ");
 }

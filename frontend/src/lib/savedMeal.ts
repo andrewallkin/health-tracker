@@ -1,38 +1,36 @@
-import type { SavedMeal } from "../types/nutrition";
+import type { FoodComponentSelection } from "./composeFoods";
+import type { SavedMealItemInput } from "../types/nutrition";
 
 export interface NewSavedMealPayload {
   name: string;
   description?: string;
   imageUrl?: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+  items?: SavedMealItemInput[];
 }
 
 export function createSavedMealId(): string {
   return crypto.randomUUID();
 }
 
-export function buildSavedMeal(payload: NewSavedMealPayload): SavedMeal {
-  const meal: SavedMeal = {
-    id: createSavedMealId(),
-    name: payload.name.trim(),
-    calories: payload.calories,
-    protein: payload.protein,
-    carbs: payload.carbs,
-    fat: payload.fat,
-  };
-
-  const description = payload.description?.trim();
-  const imageUrl = payload.imageUrl?.trim();
-
-  if (description) meal.description = description;
-  if (imageUrl) meal.imageUrl = imageUrl;
-
-  return meal;
+export function findSavedMeal<T extends { id: string }>(meals: T[], id: string): T | undefined {
+  return meals.find((meal) => meal.id === id);
 }
 
-export function findSavedMeal(meals: SavedMeal[], id: string): SavedMeal | undefined {
-  return meals.find((meal) => meal.id === id);
+export function mealItemsToSelections(items: SavedMealItemInput[]): FoodComponentSelection[] {
+  return items.map((item) => ({
+    foodId: item.foodId,
+    quantity: item.quantity,
+  }));
+}
+
+export function formatMealIngredientList(
+  items: { foodName: string; quantity: number }[],
+): string {
+  return items
+    .map((item) => (item.quantity === 1 ? item.foodName : `${item.foodName} ×${item.quantity}`))
+    .join(" · ");
 }

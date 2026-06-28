@@ -10,6 +10,7 @@ describe("checkIn validation", () => {
 
   it("parses valid weight", () => {
     expect(parseWeightKg("82.5")).toBe(82.5);
+    expect(parseWeightKg("82,5")).toBe(82.5);
     expect(parseWeightKg("")).toBeNull();
     expect(parseWeightKg("10")).toBeNull();
   });

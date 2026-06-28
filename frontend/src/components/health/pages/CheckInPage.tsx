@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { isCheckInValid, MAX_WEIGHT_KG, MIN_WEIGHT_KG, parseWeightKg } from "../../../lib/checkIn";
 import type { CheckIn } from "../../../types/health";
 import { PageShell } from "../../layout/PageShell";
+import { DecimalInput } from "../../shared/DecimalInput";
 import { CheckInPhotoPicker, type CheckInPhotoItem } from "../CheckInPhotoPicker";
 
 interface CheckInPageProps {
@@ -75,14 +76,9 @@ export function CheckInPage({
         )}
 
         <Field label={`Weight (kg, optional · ${MIN_WEIGHT_KG}–${MAX_WEIGHT_KG})`}>
-          <input
-            type="number"
-            min={MIN_WEIGHT_KG}
-            max={MAX_WEIGHT_KG}
-            step="0.1"
-            inputMode="decimal"
+          <DecimalInput
             value={weight}
-            onChange={(e) => setWeight(e.target.value)}
+            onChange={setWeight}
             placeholder="e.g. 82.5"
             className={inputClass}
           />

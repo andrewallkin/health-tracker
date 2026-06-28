@@ -24,6 +24,7 @@ def test_encrypt_decrypt_round_trip(monkeypatch):
 def test_protected_routes_require_auth(client):
     assert client.get("/api/goals").status_code == 401
     assert client.get("/api/meals").status_code == 401
+    assert client.get("/api/foods").status_code == 401
     assert client.get("/api/entries").status_code == 401
     assert client.get("/api/settings/ai").status_code == 401
     assert client.post("/api/estimate", json={"note": "shake"}).status_code == 401
@@ -237,6 +238,123 @@ def test_meal_update_and_delete(client, auth_headers):
     entry_after = client.get("/api/entries", headers=auth_headers, params={"date": "2026-06-02"}).json()[0]
     assert entry_after["id"] == entry_id
     assert entry_after["savedMealId"] is None
+
+
+def test_saved_foods_and_composed_meals(client, auth_headers):
+    mince = client.post(
+        "/api/foods",
+        headers=auth_headers,
+        json={
+            "name": "Chilli mince",
+            "calories": 300,
+            "protein": 25,
+            "carbs": 10,
+            "fat": 15,
+            "tags": ["protein"],
+        },
+    )
+    assert mince.status_code == 201
+    mince_id = mince.json()["id"]
+
+    rice = client.post(
+        "/api/foods",
+        headers=auth_headers,
+        json={
+            "name": "Rice",
+            "calories": 200,
+            "protein": 4,
+            "carbs": 45,
+            "fat": 1,
+            "tags": ["carb"],
+        },
+    )
+    assert rice.status_code == 201
+    rice_id = rice.json()["id"]
+
+    meal = client.post(
+        "/api/meals",
+        headers=auth_headers,
+        json={
+            "name": "Mince bowl",
+            "items": [
+                {"foodId": mince_id, "quantity": 1, "sortOrder": 0},
+                {"foodId": rice_id, "quantity": 1, "sortOrder": 1},
+            ],
+        },
+    )
+    assert meal.status_code == 201
+    meal_body = meal.json()
+    assert meal_body["kind"] == "composed"
+    assert meal_body["calories"] == 500
+    assert meal_body["protein"] == 29
+    assert len(meal_body["items"]) == 2
+    assert meal_body["items"][0]["foodName"] == "Chilli mince"
+    meal_id = meal_body["id"]
+
+    entry = client.post(
+        "/api/entries",
+        headers=auth_headers,
+        json={
+            "logDate": "2026-06-03",
+            "name": "Mince bowl",
+            "slot": "dinner",
+            "time": "19:00",
+            "servings": 1,
+            "calories": 500,
+            "protein": 29,
+            "carbs": 55,
+            "fat": 16,
+            "savedMealId": meal_id,
+        },
+    )
+    assert entry.status_code == 201
+    entry_id = entry.json()["id"]
+
+    patch_food = client.patch(
+        f"/api/foods/{mince_id}",
+        headers=auth_headers,
+        json={"calories": 350},
+    )
+    assert patch_food.status_code == 200
+
+    meal_after = client.get("/api/meals", headers=auth_headers).json()
+    composed = next(item for item in meal_after if item["id"] == meal_id)
+    assert composed["calories"] == 550
+
+    entry_before = client.get("/api/entries", headers=auth_headers, params={"date": "2026-06-03"}).json()[0]
+    assert entry_before["calories"] == 500
+
+    delete_blocked = client.delete(f"/api/foods/{rice_id}", headers=auth_headers)
+    assert delete_blocked.status_code == 409
+    conflict = delete_blocked.json()["detail"]
+    assert meal_id in conflict["affectedMealIds"]
+
+    delete_ok = client.delete(f"/api/foods/{rice_id}?confirm=true", headers=auth_headers)
+    assert delete_ok.status_code == 204
+
+    meals_after = client.get("/api/meals", headers=auth_headers).json()
+    recomposed = next(item for item in meals_after if item["id"] == meal_id)
+    assert recomposed["calories"] == 350
+    assert len(recomposed["items"]) == 1
+
+    entry_still = client.get("/api/entries", headers=auth_headers, params={"date": "2026-06-03"}).json()[0]
+    assert entry_still["id"] == entry_id
+    assert entry_still["calories"] == 500
+
+
+def test_food_user_isolation(client):
+    headers_a = register_user(client, "foods-a@example.com")
+    headers_b = register_user(client, "foods-b@example.com")
+
+    food = client.post(
+        "/api/foods",
+        headers=headers_a,
+        json={"name": "Private", "calories": 100, "protein": 10, "carbs": 5, "fat": 2},
+    )
+    food_id = food.json()["id"]
+
+    assert client.get("/api/foods", headers=headers_b).json() == []
+    assert client.patch(f"/api/foods/{food_id}", headers=headers_b, json={"name": "Hacked"}).status_code == 404
 
 
 def test_photo_upload(client, auth_headers):

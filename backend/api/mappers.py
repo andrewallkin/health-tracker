@@ -4,10 +4,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..crypto import decrypt_api_key, mask_api_key
-from ..db_models import AppSettingsRow, CheckInRow, DailyGoalRow, LogEntryRow, SavedMealRow
+from ..db_models import AppSettingsRow, CheckInRow, DailyGoalRow, LogEntryRow, SavedFoodRow, SavedMealItemRow, SavedMealRow
 from ..gcs import GCSService
+from .compose import MacroTotals, food_to_macros, scale_macros
 from .photo_storage import resolve_image_url_for_response
-from .schemas import AiSettings, CheckIn, CheckInPhoto, DailyGoal, LogEntry, SavedMeal
+from .schemas import AiSettings, CheckIn, CheckInPhoto, DailyGoal, LogEntry, SavedFood, SavedMeal, SavedMealItem
 
 DEFAULT_DAILY_GOAL = {"calories": 2200, "protein": 180, "carbs": 220, "fat": 70}
 
@@ -67,16 +68,53 @@ def daily_goal_to_schema(row: DailyGoalRow) -> DailyGoal:
     )
 
 
+def saved_food_to_schema(row: SavedFoodRow) -> SavedFood:
+    tags = row.tags if isinstance(row.tags, list) else []
+    return SavedFood(
+        id=row.id,
+        name=row.name,
+        description=row.description,
+        calories=row.calories,
+        protein=row.protein,
+        carbs=row.carbs,
+        fat=row.fat,
+        tags=tags,
+    )
+
+
+def saved_meal_item_to_schema(item: SavedMealItemRow) -> SavedMealItem:
+    food = item.food
+    food_name = food.name if food is not None else ""
+    if food is not None:
+        scaled = scale_macros(food_to_macros(food), item.quantity)
+    else:
+        scaled = MacroTotals(calories=0, protein=0, carbs=0, fat=0)
+
+    return SavedMealItem(
+        foodId=item.food_id,
+        quantity=item.quantity,
+        sortOrder=item.sort_order,
+        foodName=food_name,
+        calories=scaled.calories,
+        protein=scaled.protein,
+        carbs=scaled.carbs,
+        fat=scaled.fat,
+    )
+
+
 def saved_meal_to_schema(row: SavedMealRow, gcs: GCSService) -> SavedMeal:
+    items = [saved_meal_item_to_schema(item) for item in row.items]
     return SavedMeal(
         id=row.id,
         name=row.name,
         description=row.description,
         imageUrl=resolve_image_url_for_response(row.image_url, gcs),
+        kind=row.kind,  # type: ignore[arg-type]
         calories=row.calories,
         protein=row.protein,
         carbs=row.carbs,
         fat=row.fat,
+        items=items,
     )
 
 

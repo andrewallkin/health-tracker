@@ -109,6 +109,11 @@ export function MainDashboardShell({
             onAddFood={
               !isFutureDate(selectedDate) ? () => onViewChange({ type: "add-food" }) : undefined
             }
+            onOpenLibrary={
+              !isFutureDate(selectedDate)
+                ? () => onViewChange({ type: "saved-meals", tab: "foods" })
+                : undefined
+            }
           />
         )}
 

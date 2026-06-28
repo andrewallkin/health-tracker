@@ -1,21 +1,44 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import {
+  componentsToMealItems,
+  type FoodComponentSelection,
+} from "../../../lib/composeFoods";
+import { sumFoodComponents } from "../../../lib/composeFoods";
+import { parseNonNegative, parsePositive } from "../../../lib/numericInput";
 import type { NewSavedMealPayload } from "../../../lib/savedMeal";
-import type { SavedMeal } from "../../../types/nutrition";
+import type { SavedFood, SavedMeal } from "../../../types/nutrition";
 import { useConfirm } from "../../../context/useConfirm";
 import { MacroChips } from "../dashboard/MacroChips";
+import { FoodComposer } from "../shared/FoodComposer";
 import { MealPhotoPicker } from "../shared/MealPhotoPicker";
 import { PageShell } from "../../layout/PageShell";
+import { DecimalInput } from "../../shared/DecimalInput";
+
+type MealMode = "manual" | "composed";
 
 interface NewMealPageProps {
+  savedFoods: SavedFood[];
   initialMeal?: SavedMeal;
   onBack: () => void;
   onSave: (payload: NewSavedMealPayload) => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
+  onManageFoods?: () => void;
 }
 
-export function NewMealPage({ initialMeal, onBack, onSave, onDelete }: NewMealPageProps) {
+export function NewMealPage({
+  savedFoods,
+  initialMeal,
+  onBack,
+  onSave,
+  onDelete,
+  onManageFoods,
+}: NewMealPageProps) {
   const confirm = useConfirm();
   const isEditing = Boolean(initialMeal);
+  const initialMode: MealMode =
+    initialMeal?.kind === "composed" ? "composed" : "manual";
+
+  const [mode, setMode] = useState<MealMode>(initialMode);
   const [name, setName] = useState(initialMeal?.name ?? "");
   const [description, setDescription] = useState(initialMeal?.description ?? "");
   const [imageUrl, setImageUrl] = useState<string | undefined>(initialMeal?.imageUrl);
@@ -23,11 +46,24 @@ export function NewMealPage({ initialMeal, onBack, onSave, onDelete }: NewMealPa
   const [protein, setProtein] = useState(String(initialMeal?.protein ?? ""));
   const [carbs, setCarbs] = useState(String(initialMeal?.carbs ?? ""));
   const [fat, setFat] = useState(String(initialMeal?.fat ?? ""));
+  const [components, setComponents] = useState<FoodComponentSelection[]>(() =>
+    initialMeal?.kind === "composed"
+      ? initialMeal.items.map((item) => ({
+          foodId: item.foodId,
+          quantity: item.quantity,
+        }))
+      : [],
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const payload: NewSavedMealPayload = {
+  const composedTotals = useMemo(
+    () => sumFoodComponents(savedFoods, components),
+    [savedFoods, components],
+  );
+
+  const manualPayload: NewSavedMealPayload = {
     name,
     description: description.trim() || undefined,
     imageUrl,
@@ -37,14 +73,26 @@ export function NewMealPage({ initialMeal, onBack, onSave, onDelete }: NewMealPa
     fat: parseNonNegative(fat),
   };
 
-  const isValid = name.trim().length > 0 && payload.calories > 0;
+  const isManualValid = name.trim().length > 0 && manualPayload.calories! > 0;
+  const isComposedValid =
+    name.trim().length > 0 && components.length > 0 && composedTotals.calories > 0;
+  const isValid = mode === "manual" ? isManualValid : isComposedValid;
 
   const handleSave = async () => {
     if (!isValid) return;
     setIsSaving(true);
     setError(null);
     try {
-      await onSave(payload);
+      if (mode === "manual") {
+        await onSave(manualPayload);
+      } else {
+        await onSave({
+          name: name.trim(),
+          description: description.trim() || undefined,
+          imageUrl,
+          items: componentsToMealItems(components),
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save meal.");
     } finally {
@@ -81,7 +129,7 @@ export function NewMealPage({ initialMeal, onBack, onSave, onDelete }: NewMealPa
   return (
     <PageShell
       title={isEditing ? "Edit meal" : "New meal"}
-      subtitle={isEditing ? "Update your saved meal" : "Save to your library for quick logging"}
+      subtitle="Save to your library for quick logging"
       onBack={onBack}
       footer={
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center bg-gradient-to-t from-surface via-surface/90 to-transparent px-4 pb-6 pt-10">
@@ -103,91 +151,96 @@ export function NewMealPage({ initialMeal, onBack, onSave, onDelete }: NewMealPa
           </p>
         )}
 
+        {!isEditing && (
+          <ModeToggle mode={mode} onChange={setMode} />
+        )}
+
+        {isEditing && initialMeal?.kind === "composed" && (
+          <p className="text-xs text-zinc-500">Composed meal — edit foods below.</p>
+        )}
+
         <Field label="Name">
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Chicken stir-fry"
+            placeholder="Chicken, rice, and vegetables"
             className={inputClass}
           />
         </Field>
 
-        <Field label="Description (optional)">
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Ingredients, notes…"
-            rows={3}
-            className={`${inputClass} resize-none`}
-          />
-        </Field>
+        {mode === "manual" && (
+          <>
+            <Field label="Description (optional)">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="One serving · grilled chicken, ½ cup rice…"
+                rows={3}
+                className={`${inputClass} resize-none`}
+              />
+            </Field>
 
-        <MealPhotoPicker imageUrl={imageUrl} onChange={setImageUrl} />
+            <MealPhotoPicker imageUrl={imageUrl} onChange={setImageUrl} />
 
-        <section>
-          <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition per serving</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Calories (kcal)">
-              <input
-                type="number"
-                min={1}
-                inputMode="numeric"
-                value={calories}
-                onChange={(e) => setCalories(e.target.value)}
-                placeholder="0"
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Protein (g)">
-              <input
-                type="number"
-                min={0}
-                inputMode="decimal"
-                value={protein}
-                onChange={(e) => setProtein(e.target.value)}
-                placeholder="0"
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Carbs (g)">
-              <input
-                type="number"
-                min={0}
-                inputMode="decimal"
-                value={carbs}
-                onChange={(e) => setCarbs(e.target.value)}
-                placeholder="0"
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Fat (g)">
-              <input
-                type="number"
-                min={0}
-                inputMode="decimal"
-                value={fat}
-                onChange={(e) => setFat(e.target.value)}
-                placeholder="0"
-                className={inputClass}
-              />
-            </Field>
-          </div>
-        </section>
+            <section>
+              <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition per serving</h2>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Calories (kcal)">
+                  <DecimalInput
+                    allowDecimal={false}
+                    value={calories}
+                    onChange={setCalories}
+                    placeholder="0"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Protein (g)">
+                  <DecimalInput value={protein} onChange={setProtein} placeholder="0" className={inputClass} />
+                </Field>
+                <Field label="Carbs (g)">
+                  <DecimalInput value={carbs} onChange={setCarbs} placeholder="0" className={inputClass} />
+                </Field>
+                <Field label="Fat (g)">
+                  <DecimalInput value={fat} onChange={setFat} placeholder="0" className={inputClass} />
+                </Field>
+              </div>
+            </section>
 
-        {isValid && (
-          <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
-            <h2 className="mb-3 text-sm font-medium text-zinc-400">Preview</h2>
-            <MacroChips
-              macros={{
-                calories: payload.calories,
-                protein: payload.protein,
-                carbs: payload.carbs,
-                fat: payload.fat,
-              }}
-              size="md"
+            {isManualValid && (
+              <PreviewSection
+                macros={{
+                  calories: manualPayload.calories!,
+                  protein: manualPayload.protein!,
+                  carbs: manualPayload.carbs!,
+                  fat: manualPayload.fat!,
+                }}
+              />
+            )}
+          </>
+        )}
+
+        {mode === "composed" && (
+          <>
+            <Field label="Description (optional)">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Weekday lunch prep, serves 1…"
+                rows={2}
+                className={`${inputClass} resize-none`}
+              />
+            </Field>
+
+            <FoodComposer
+              savedFoods={savedFoods}
+              components={components}
+              onChange={setComponents}
+              onManageFoods={onManageFoods}
             />
-          </section>
+
+            {isComposedValid && <PreviewSection macros={composedTotals} />}
+          </>
         )}
 
         {isEditing && onDelete && (
@@ -207,8 +260,56 @@ export function NewMealPage({ initialMeal, onBack, onSave, onDelete }: NewMealPa
   );
 }
 
+function ModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: MealMode;
+  onChange: (mode: MealMode) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-white/4 p-1">
+      <button
+        type="button"
+        onClick={() => onChange("manual")}
+        className={`rounded-lg py-2 text-sm font-medium transition ${
+          mode === "manual"
+            ? "bg-amber-500/20 text-amber-400"
+            : "text-zinc-400 hover:text-zinc-200"
+        }`}
+      >
+        Manual
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("composed")}
+        className={`rounded-lg py-2 text-sm font-medium transition ${
+          mode === "composed"
+            ? "bg-amber-500/20 text-amber-400"
+            : "text-zinc-400 hover:text-zinc-200"
+        }`}
+      >
+        From foods
+      </button>
+    </div>
+  );
+}
+
+function PreviewSection({
+  macros,
+}: {
+  macros: { calories: number; protein: number; carbs: number; fat: number };
+}) {
+  return (
+    <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
+      <h2 className="mb-3 text-sm font-medium text-zinc-400">Preview</h2>
+      <MacroChips macros={macros} size="md" />
+    </section>
+  );
+}
+
 const inputClass =
-  "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-white/20 focus:bg-white/8";
+  "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-base text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-white/20 focus:bg-white/8";
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -217,16 +318,4 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </label>
   );
-}
-
-function parseNonNegative(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.round(parsed);
-}
-
-function parsePositive(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-  return Math.round(parsed);
 }
