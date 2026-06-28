@@ -14,7 +14,7 @@ import {
   fieldValuesFromDailyGoal,
   isValidDailyGoal,
   type DailyGoalFieldValues,
-} from "../shared/dailyGoalFields";
+} from "../shared/dailyGoalFieldUtils";
 
 export interface SettingsSavePayload {
   goal: DailyGoal;

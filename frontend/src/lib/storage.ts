@@ -143,7 +143,11 @@ function isSavedMeal(value: unknown): value is SavedMeal {
     meal.carbs >= 0 &&
     meal.fat >= 0 &&
     (meal.description === undefined || typeof meal.description === "string") &&
-    (meal.imageUrl === undefined || typeof meal.imageUrl === "string")
+    (meal.imageUrl === undefined || typeof meal.imageUrl === "string") &&
+    (meal.kind === undefined ||
+      meal.kind === "manual" ||
+      meal.kind === "composed") &&
+    (meal.items === undefined || Array.isArray(meal.items))
   );
 }
 

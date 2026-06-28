@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { DecimalInput } from "../../shared/DecimalInput";
-import type { DailyGoalFieldValues } from "./dailyGoalFields";
+import type { DailyGoalFieldValues } from "./dailyGoalFieldUtils";
 
 interface DailyGoalFieldsProps {
   values: DailyGoalFieldValues;

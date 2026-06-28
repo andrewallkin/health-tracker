@@ -2,7 +2,7 @@ import { useState } from "react";
 import { scaleMacros } from "../../../lib/aggregates";
 import { addToDayLabel } from "../../../lib/logLabels";
 import type { LogMealPayload } from "../../../lib/logEntry";
-import { findSavedMeal } from "../../../lib/savedMeal";
+import { findSavedMeal, formatMealIngredientList } from "../../../lib/savedMeal";
 import type { MealSlot, SavedMeal } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
 import { MealPhotoView } from "../shared/MealPhotoView";
@@ -107,6 +107,26 @@ export function LogMealPage({
 
         {meal.description && (
           <p className="text-sm leading-relaxed text-zinc-400">{meal.description}</p>
+        )}
+
+        {meal.kind === "composed" && meal.items.length > 0 && (
+          <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
+            <h2 className="mb-2 text-sm font-medium text-zinc-400">Ingredients</h2>
+            <ul className="space-y-1.5">
+              {meal.items.map((item) => (
+                <li
+                  key={item.foodId}
+                  className="flex items-center justify-between text-sm text-zinc-300"
+                >
+                  <span>{item.foodName}</span>
+                  <span className="text-zinc-500">
+                    ×{item.quantity} · {Math.round(item.calories * servings)} kcal
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-zinc-600">{formatMealIngredientList(meal.items)}</p>
+          </section>
         )}
 
         <section className="rounded-2xl border border-white/10 bg-white/4 p-4">

@@ -1,4 +1,5 @@
 import type { SavedMeal } from "../../../types/nutrition";
+import { formatMealIngredientList } from "../../../lib/savedMeal";
 import { MacroChips } from "../dashboard/MacroChips";
 
 interface SavedMealCardProps {
@@ -19,6 +20,11 @@ export function SavedMealCard({ meal, onSelect, onEdit }: SavedMealCardProps) {
           <MealThumbnail name={meal.name} imageUrl={meal.imageUrl} />
           <div className="min-w-0 flex-1 py-0.5">
             <h3 className="font-medium text-zinc-100">{meal.name}</h3>
+            {meal.kind === "composed" && meal.items.length > 0 && (
+              <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500">
+                {formatMealIngredientList(meal.items)}
+              </p>
+            )}
             {meal.description && (
               <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500">
                 {meal.description}

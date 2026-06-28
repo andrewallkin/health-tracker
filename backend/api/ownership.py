@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from ..db_models import CheckInRow, LogEntryRow, SavedMealRow
+from ..db_models import CheckInRow, LogEntryRow, SavedFoodRow, SavedMealRow
+
+
+def get_owned_food(db: Session, user_id: str, food_id: str) -> SavedFoodRow | None:
+    return (
+        db.query(SavedFoodRow)
+        .filter(SavedFoodRow.id == food_id, SavedFoodRow.user_id == user_id)
+        .first()
+    )
 
 
 def get_owned_meal(db: Session, user_id: str, meal_id: str) -> SavedMealRow | None:

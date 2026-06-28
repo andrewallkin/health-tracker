@@ -3,17 +3,64 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ...database import get_db
-from ...db_models import LogEntryRow, SavedMealRow, UserRow
+from ...db_models import LogEntryRow, SavedMealItemRow, SavedMealRow, UserRow
 from ...gcs import GCSService, get_gcs_service
+from ..compose import sum_components
 from ..deps import get_current_user
 from ..mappers import saved_meal_to_schema
-from ..ownership import get_owned_meal
-from ..schemas import SavedMeal, SavedMealCreate, SavedMealUpdate
+from ..ownership import get_owned_food, get_owned_meal
+from ..schemas import SavedMeal, SavedMealCreate, SavedMealItemInput, SavedMealUpdate
 
 router = APIRouter(prefix="/meals", tags=["meals"])
+
+
+def _load_meals_query(db: Session, user_id: str):
+    return (
+        db.query(SavedMealRow)
+        .options(joinedload(SavedMealRow.items).joinedload(SavedMealItemRow.food))
+        .filter(SavedMealRow.user_id == user_id)
+        .order_by(SavedMealRow.name)
+    )
+
+
+def _apply_composed_items(
+    db: Session,
+    user_id: str,
+    meal: SavedMealRow,
+    items: list[SavedMealItemInput],
+) -> None:
+    for item in list(meal.items):
+        db.delete(item)
+    meal.items.clear()
+
+    components: list[tuple] = []
+    for index, item_input in enumerate(items):
+        food = get_owned_food(db, user_id, item_input.foodId)
+        if food is None:
+            raise HTTPException(status_code=404, detail=f"Food not found: {item_input.foodId}")
+
+        sort_order = item_input.sortOrder if item_input.sortOrder else index
+        row = SavedMealItemRow(
+            id=str(uuid.uuid4()),
+            meal_id=meal.id,
+            food_id=food.id,
+            quantity=item_input.quantity,
+            sort_order=sort_order,
+        )
+        row.food = food
+        db.add(row)
+        meal.items.append(row)
+        components.append((food, item_input.quantity))
+
+    totals = sum_components(components)
+    meal.kind = "composed"
+    meal.calories = totals.calories
+    meal.protein = totals.protein
+    meal.carbs = totals.carbs
+    meal.fat = totals.fat
 
 
 @router.get("", response_model=list[SavedMeal])
@@ -22,12 +69,7 @@ def list_meals(
     user: UserRow = Depends(get_current_user),
     gcs: GCSService = Depends(get_gcs_service),
 ) -> list[SavedMeal]:
-    rows = (
-        db.query(SavedMealRow)
-        .filter(SavedMealRow.user_id == user.id)
-        .order_by(SavedMealRow.name)
-        .all()
-    )
+    rows = _load_meals_query(db, user.id).all()
     return [saved_meal_to_schema(row, gcs) for row in rows]
 
 
@@ -44,14 +86,24 @@ def create_meal(
         name=payload.name.strip(),
         description=payload.description,
         image_url=payload.imageUrl,
-        calories=payload.calories,
-        protein=payload.protein,
-        carbs=payload.carbs,
-        fat=payload.fat,
+        kind="manual",
+        calories=payload.calories or 0,
+        protein=payload.protein or 0,
+        carbs=payload.carbs or 0,
+        fat=payload.fat or 0,
     )
-    db.add(row)
+
+    if payload.items is not None:
+        db.add(row)
+        db.flush()
+        _apply_composed_items(db, user.id, row, payload.items)
+    else:
+        row.kind = "manual"
+        db.add(row)
+
     db.commit()
     db.refresh(row)
+    row = _load_meals_query(db, user.id).filter(SavedMealRow.id == row.id).one()
     return saved_meal_to_schema(row, gcs)
 
 
@@ -63,11 +115,30 @@ def update_meal(
     user: UserRow = Depends(get_current_user),
     gcs: GCSService = Depends(get_gcs_service),
 ) -> SavedMeal:
-    row = get_owned_meal(db, user.id, meal_id)
+    row = (
+        _load_meals_query(db, user.id)
+        .filter(SavedMealRow.id == meal_id)
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Meal not found")
 
     updates = payload.model_dump(exclude_unset=True)
+
+    if "items" in updates:
+        items = updates.pop("items")
+        if items is None or len(items) == 0:
+            raise HTTPException(status_code=422, detail="items must be non-empty for composed meals")
+        item_inputs = [SavedMealItemInput.model_validate(item) for item in items]
+        _apply_composed_items(db, user.id, row, item_inputs)
+    elif row.kind == "composed":
+        macro_fields = {"calories", "protein", "carbs", "fat"}
+        if macro_fields.intersection(updates.keys()):
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot set macros directly on composed meals; update items instead",
+            )
+
     field_map = {
         "name": "name",
         "description": "description",
@@ -79,13 +150,15 @@ def update_meal(
     }
     for api_field, orm_field in field_map.items():
         if api_field in updates:
+            if row.kind == "composed" and api_field in {"calories", "protein", "carbs", "fat"}:
+                continue
             value = updates[api_field]
             if api_field == "name" and isinstance(value, str):
                 value = value.strip()
             setattr(row, orm_field, value)
 
     db.commit()
-    db.refresh(row)
+    row = _load_meals_query(db, user.id).filter(SavedMealRow.id == meal_id).one()
     return saved_meal_to_schema(row, gcs)
 
 

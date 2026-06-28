@@ -22,9 +22,13 @@ export interface DescribeFoodInput {
 
 import type { MealSlot } from "./nutrition";
 
+import type { FoodTag } from "./nutrition";
+
 export interface ReviewConfirmOptions {
   addToDay: boolean;
   saveAsMeal: boolean;
+  saveAsFood: boolean;
+  foodTags?: FoodTag[];
 }
 
 export interface ReviewedFoodPayload {

@@ -4,14 +4,16 @@ import { DescribeFoodPage } from "../nutrition/pages/DescribeFoodPage";
 import { EstimateReviewPage } from "../nutrition/pages/EstimateReviewPage";
 import { GoalsSettingsPage } from "../nutrition/pages/GoalsSettingsPage";
 import { LogMealPage } from "../nutrition/pages/LogMealPage";
+import { NewFoodPage } from "../nutrition/pages/NewFoodPage";
 import { NewMealPage } from "../nutrition/pages/NewMealPage";
 import { QuickLogPage } from "../nutrition/pages/QuickLogPage";
 import { SavedMealsPage } from "../nutrition/pages/SavedMealsPage";
 import type { useCheckInData } from "../../hooks/useCheckInData";
 import type { useEstimateFlow } from "../../hooks/useEstimateFlow";
 import type { useNutritionData } from "../../hooks/useNutritionData";
-import { reviewedToQuickLog, reviewedToSavedMeal } from "../../lib/foodEstimate";
+import { reviewedToQuickLog, reviewedToSavedFood, reviewedToSavedMeal } from "../../lib/foodEstimate";
 import { isFutureDate } from "../../lib/logLabels";
+import { findSavedFood } from "../../lib/savedFood";
 import { findSavedMeal } from "../../lib/savedMeal";
 import type { AppView } from "../../types/nutrition";
 import { PageShell } from "./PageShell";
@@ -42,6 +44,7 @@ export function AppFlowViews({
   const {
     goal,
     savedMeals,
+    savedFoods,
     entries,
     hasApiKey,
     addSavedMealEntry,
@@ -51,6 +54,9 @@ export function AppFlowViews({
     addSavedMeal,
     editSavedMeal,
     removeSavedMeal,
+    addSavedFood,
+    editSavedFood,
+    removeSavedFood,
     handleSaveSettings,
     setHasApiKey,
   } = nutrition;
@@ -155,11 +161,18 @@ export function AppFlowViews({
         estimate={estimateSession.estimate}
         logDate={selectedDate}
         onBack={() => onViewChange({ type: "describe-food" })}
-        onConfirm={async (payload, { addToDay, saveAsMeal }) => {
+        onConfirm={async (payload, { addToDay, saveAsMeal, saveAsFood, foodTags }) => {
+          if (saveAsFood) await addSavedFood(reviewedToSavedFood(payload, foodTags));
           if (saveAsMeal) await addSavedMeal(reviewedToSavedMeal(payload));
           if (addToDay) await addQuickLogEntry(reviewedToQuickLog(payload));
           clearEstimateSession();
-          onViewChange(addToDay ? { type: "today" } : { type: "saved-meals" });
+          if (addToDay) {
+            onViewChange({ type: "today" });
+          } else if (saveAsFood) {
+            onViewChange({ type: "saved-meals", tab: "foods" });
+          } else {
+            onViewChange({ type: "saved-meals" });
+          }
         }}
       />
     );
@@ -168,11 +181,54 @@ export function AppFlowViews({
   if (view.type === "saved-meals") {
     return (
       <SavedMealsPage
+        key={view.tab ?? "meals"}
         meals={savedMeals}
+        foods={savedFoods}
+        initialTab={view.tab}
         onBack={() => onViewChange({ type: "add-food" })}
-        onCreateNew={() => onViewChange({ type: "new-meal" })}
+        onCreateNewMeal={() => onViewChange({ type: "new-meal" })}
+        onCreateNewFood={() => onViewChange({ type: "new-food" })}
         onSelectMeal={(mealId) => onViewChange({ type: "log-meal", mealId })}
         onEditMeal={(mealId) => onViewChange({ type: "edit-meal", mealId })}
+        onEditFood={(foodId) => onViewChange({ type: "edit-food", foodId })}
+      />
+    );
+  }
+
+  if (view.type === "new-food") {
+    return (
+      <NewFoodPage
+        onBack={() => onViewChange({ type: "saved-meals", tab: "foods" })}
+        onSave={async (payload) => {
+          await addSavedFood(payload);
+          onViewChange({ type: "saved-meals", tab: "foods" });
+        }}
+      />
+    );
+  }
+
+  if (view.type === "edit-food") {
+    const food = findSavedFood(savedFoods, view.foodId);
+    if (!food) {
+      return (
+        <PageShell title="Food not found" onBack={() => onViewChange({ type: "saved-meals", tab: "foods" })}>
+          <p className="text-sm text-zinc-500">This saved food could not be loaded.</p>
+        </PageShell>
+      );
+    }
+
+    return (
+      <NewFoodPage
+        initialFood={food}
+        onBack={() => onViewChange({ type: "saved-meals", tab: "foods" })}
+        onSave={async (payload) => {
+          await editSavedFood(view.foodId, payload);
+          onViewChange({ type: "saved-meals", tab: "foods" });
+        }}
+        onDelete={async () => {
+          await removeSavedFood(view.foodId);
+          onViewChange({ type: "saved-meals", tab: "foods" });
+        }}
       />
     );
   }
@@ -180,7 +236,9 @@ export function AppFlowViews({
   if (view.type === "new-meal") {
     return (
       <NewMealPage
+        savedFoods={savedFoods}
         onBack={() => onViewChange({ type: "saved-meals" })}
+        onManageFoods={() => onViewChange({ type: "saved-meals", tab: "foods" })}
         onSave={async (payload) => {
           await addSavedMeal(payload);
           onViewChange({ type: "saved-meals" });
@@ -201,8 +259,10 @@ export function AppFlowViews({
 
     return (
       <NewMealPage
+        savedFoods={savedFoods}
         initialMeal={meal}
         onBack={() => onViewChange({ type: "saved-meals" })}
+        onManageFoods={() => onViewChange({ type: "saved-meals", tab: "foods" })}
         onSave={async (payload) => {
           await editSavedMeal(view.mealId, payload);
           onViewChange({ type: "saved-meals" });
@@ -224,9 +284,11 @@ export function AppFlowViews({
       <QuickLogPage
         key={view.entryId ?? "new"}
         logDate={selectedDate}
+        savedFoods={savedFoods}
         isEditing={Boolean(view.entryId)}
         initialEntry={editingEntry}
         onBack={() => onViewChange(view.entryId ? { type: "today" } : { type: "add-food" })}
+        onManageFoods={() => onViewChange({ type: "saved-meals", tab: "foods" })}
         onConfirm={async (payload) => {
           if (view.entryId) {
             await updateQuickLogEntryById(view.entryId, payload);
