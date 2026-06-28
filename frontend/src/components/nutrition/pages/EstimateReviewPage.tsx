@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { addToDayLabel, confirmLogLabel } from "../../../lib/logLabels";
+import { parseNonNegative, parsePositive } from "../../../lib/numericInput";
 import { defaultMealSlot } from "../../../lib/quickLog";
 import type {
   DescribeFoodInput,
@@ -11,6 +12,7 @@ import type { MealSlot } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
 import { MealPhotoView } from "../shared/MealPhotoView";
 import { PageShell } from "../../layout/PageShell";
+import { DecimalInput } from "../../shared/DecimalInput";
 
 interface EstimateReviewPageProps {
   input: DescribeFoodInput;
@@ -110,40 +112,21 @@ export function EstimateReviewPage({
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition</h2>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Calories (kcal)">
-              <input
-                type="number"
-                min={1}
+              <DecimalInput
+                allowDecimal={false}
                 value={calories}
-                onChange={(e) => setCalories(e.target.value)}
+                onChange={setCalories}
                 className={inputClass}
               />
             </Field>
             <Field label="Protein (g)">
-              <input
-                type="number"
-                min={0}
-                value={protein}
-                onChange={(e) => setProtein(e.target.value)}
-                className={inputClass}
-              />
+              <DecimalInput value={protein} onChange={setProtein} className={inputClass} />
             </Field>
             <Field label="Carbs (g)">
-              <input
-                type="number"
-                min={0}
-                value={carbs}
-                onChange={(e) => setCarbs(e.target.value)}
-                className={inputClass}
-              />
+              <DecimalInput value={carbs} onChange={setCarbs} className={inputClass} />
             </Field>
             <Field label="Fat (g)">
-              <input
-                type="number"
-                min={0}
-                value={fat}
-                onChange={(e) => setFat(e.target.value)}
-                className={inputClass}
-              />
+              <DecimalInput value={fat} onChange={setFat} className={inputClass} />
             </Field>
           </div>
         </section>
@@ -290,16 +273,4 @@ function confidenceColor(confidence: FoodEstimate["confidence"]): string {
   if (confidence === "high") return "text-green-400 bg-green-500/15";
   if (confidence === "medium") return "text-amber-400 bg-amber-500/15";
   return "text-rose-400 bg-rose-500/15";
-}
-
-function parseNonNegative(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.round(parsed);
-}
-
-function parsePositive(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-  return Math.round(parsed);
 }

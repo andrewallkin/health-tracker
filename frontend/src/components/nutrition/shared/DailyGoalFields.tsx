@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { DecimalInput } from "../../shared/DecimalInput";
 import type { DailyGoalFieldValues } from "./dailyGoalFields";
 
 interface DailyGoalFieldsProps {
@@ -11,44 +12,33 @@ export function DailyGoalFields({ values, onChange }: DailyGoalFieldsProps) {
   return (
     <>
       <Field label="Daily calorie target (kcal)">
-        <input
-          type="number"
-          min={1}
-          inputMode="numeric"
+        <DecimalInput
+          allowDecimal={false}
           value={values.calories}
-          onChange={(e) => onChange({ ...values, calories: e.target.value })}
+          onChange={(calories) => onChange({ ...values, calories })}
           className={inputClass}
         />
       </Field>
 
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label="Protein (g)">
-          <input
-            type="number"
-            min={0}
-            inputMode="numeric"
+          <DecimalInput
             value={values.protein}
-            onChange={(e) => onChange({ ...values, protein: e.target.value })}
+            onChange={(protein) => onChange({ ...values, protein })}
             className={inputClass}
           />
         </Field>
         <Field label="Carbs (g)">
-          <input
-            type="number"
-            min={0}
-            inputMode="numeric"
+          <DecimalInput
             value={values.carbs}
-            onChange={(e) => onChange({ ...values, carbs: e.target.value })}
+            onChange={(carbs) => onChange({ ...values, carbs })}
             className={inputClass}
           />
         </Field>
         <Field label="Fat (g)">
-          <input
-            type="number"
-            min={0}
-            inputMode="numeric"
+          <DecimalInput
             value={values.fat}
-            onChange={(e) => onChange({ ...values, fat: e.target.value })}
+            onChange={(fat) => onChange({ ...values, fat })}
             className={inputClass}
           />
         </Field>

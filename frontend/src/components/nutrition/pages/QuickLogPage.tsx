@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { addToDayLabel } from "../../../lib/logLabels";
+import { parseNonNegative } from "../../../lib/numericInput";
 import {
   defaultMealSlot,
   type QuickLogPayload,
@@ -7,6 +8,7 @@ import {
 import type { LogEntry, MealSlot } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
 import { PageShell } from "../../layout/PageShell";
+import { DecimalInput } from "../../shared/DecimalInput";
 
 interface QuickLogPageProps {
   logDate: string;
@@ -122,45 +124,34 @@ export function QuickLogPage({
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition</h2>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Calories (kcal)">
-              <input
-                type="number"
-                min={0}
-                inputMode="numeric"
+              <DecimalInput
+                allowDecimal={false}
                 value={calories}
-                onChange={(e) => setCalories(e.target.value)}
+                onChange={setCalories}
                 placeholder="0"
                 className={inputClass}
               />
             </Field>
             <Field label="Protein (g)">
-              <input
-                type="number"
-                min={0}
-                inputMode="decimal"
+              <DecimalInput
                 value={protein}
-                onChange={(e) => setProtein(e.target.value)}
+                onChange={setProtein}
                 placeholder="0"
                 className={inputClass}
               />
             </Field>
             <Field label="Carbs (g)">
-              <input
-                type="number"
-                min={0}
-                inputMode="decimal"
+              <DecimalInput
                 value={carbs}
-                onChange={(e) => setCarbs(e.target.value)}
+                onChange={setCarbs}
                 placeholder="0"
                 className={inputClass}
               />
             </Field>
             <Field label="Fat (g)">
-              <input
-                type="number"
-                min={0}
-                inputMode="decimal"
+              <DecimalInput
                 value={fat}
-                onChange={(e) => setFat(e.target.value)}
+                onChange={setFat}
                 placeholder="0"
                 className={inputClass}
               />
@@ -189,10 +180,4 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </label>
   );
-}
-
-function parseNonNegative(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.round(parsed);
 }

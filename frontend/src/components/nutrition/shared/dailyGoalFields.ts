@@ -1,3 +1,4 @@
+import { parseNonNegative, parsePositive } from "../../../lib/numericInput";
 import type { DailyGoal } from "../../../types/nutrition";
 
 export interface DailyGoalFieldValues {
@@ -27,16 +28,4 @@ export function fieldValuesFromDailyGoal(goal: DailyGoal): DailyGoalFieldValues 
 
 export function isValidDailyGoal(goal: DailyGoal): boolean {
   return goal.calories > 0;
-}
-
-function parseNonNegative(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.round(parsed);
-}
-
-function parsePositive(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-  return Math.round(parsed);
 }

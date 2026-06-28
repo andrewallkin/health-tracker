@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from "react";
+import { parseNonNegative, parsePositive } from "../../../lib/numericInput";
 import type { NewSavedMealPayload } from "../../../lib/savedMeal";
 import type { SavedMeal } from "../../../types/nutrition";
 import { useConfirm } from "../../../context/useConfirm";
 import { MacroChips } from "../dashboard/MacroChips";
 import { MealPhotoPicker } from "../shared/MealPhotoPicker";
 import { PageShell } from "../../layout/PageShell";
+import { DecimalInput } from "../../shared/DecimalInput";
 
 interface NewMealPageProps {
   initialMeal?: SavedMeal;
@@ -129,45 +131,34 @@ export function NewMealPage({ initialMeal, onBack, onSave, onDelete }: NewMealPa
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition per serving</h2>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Calories (kcal)">
-              <input
-                type="number"
-                min={1}
-                inputMode="numeric"
+              <DecimalInput
+                allowDecimal={false}
                 value={calories}
-                onChange={(e) => setCalories(e.target.value)}
+                onChange={setCalories}
                 placeholder="0"
                 className={inputClass}
               />
             </Field>
             <Field label="Protein (g)">
-              <input
-                type="number"
-                min={0}
-                inputMode="decimal"
+              <DecimalInput
                 value={protein}
-                onChange={(e) => setProtein(e.target.value)}
+                onChange={setProtein}
                 placeholder="0"
                 className={inputClass}
               />
             </Field>
             <Field label="Carbs (g)">
-              <input
-                type="number"
-                min={0}
-                inputMode="decimal"
+              <DecimalInput
                 value={carbs}
-                onChange={(e) => setCarbs(e.target.value)}
+                onChange={setCarbs}
                 placeholder="0"
                 className={inputClass}
               />
             </Field>
             <Field label="Fat (g)">
-              <input
-                type="number"
-                min={0}
-                inputMode="decimal"
+              <DecimalInput
                 value={fat}
-                onChange={(e) => setFat(e.target.value)}
+                onChange={setFat}
                 placeholder="0"
                 className={inputClass}
               />
@@ -217,16 +208,4 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </label>
   );
-}
-
-function parseNonNegative(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.round(parsed);
-}
-
-function parsePositive(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-  return Math.round(parsed);
 }
