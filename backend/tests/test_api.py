@@ -376,6 +376,56 @@ def test_saved_foods_and_composed_meals(client, auth_headers):
     assert entry_still["calories"] == 500
 
 
+def test_composed_meal_update_items(client, auth_headers):
+    mince = client.post(
+        "/api/foods",
+        headers=auth_headers,
+        json={"name": "Mince", "calories": 300, "protein": 25, "carbs": 10, "fat": 15},
+    )
+    assert mince.status_code == 201
+    mince_id = mince.json()["id"]
+
+    rice = client.post(
+        "/api/foods",
+        headers=auth_headers,
+        json={"name": "Rice", "calories": 200, "protein": 4, "carbs": 45, "fat": 1},
+    )
+    assert rice.status_code == 201
+    rice_id = rice.json()["id"]
+
+    meal = client.post(
+        "/api/meals",
+        headers=auth_headers,
+        json={
+            "name": "Bowl",
+            "imageUrl": "/api/photos/bowl.jpg",
+            "items": [
+                {"foodId": mince_id, "quantity": 1, "sortOrder": 0},
+                {"foodId": rice_id, "quantity": 1, "sortOrder": 1},
+            ],
+        },
+    )
+    assert meal.status_code == 201
+    meal_id = meal.json()["id"]
+
+    patch_response = client.patch(
+        f"/api/meals/{meal_id}",
+        headers=auth_headers,
+        json={
+            "imageUrl": "/api/photos/bowl-updated.jpg",
+            "items": [
+                {"foodId": mince_id, "quantity": 1, "sortOrder": 0},
+                {"foodId": rice_id, "quantity": 1, "sortOrder": 1},
+            ],
+        },
+    )
+    assert patch_response.status_code == 200
+    body = patch_response.json()
+    assert body["imageUrl"] == "/api/photos/bowl-updated.jpg"
+    assert body["calories"] == 500
+    assert len(body["items"]) == 2
+
+
 def test_food_image_url(client, auth_headers):
     create_response = client.post(
         "/api/foods",

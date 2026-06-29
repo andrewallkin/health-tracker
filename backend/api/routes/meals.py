@@ -36,6 +36,9 @@ def _apply_composed_items(
     for item in list(meal.items):
         db.delete(item)
     meal.items.clear()
+    # Flush deletes before inserting replacements — otherwise PostgreSQL can
+    # hit uq_saved_meal_items_meal_food when SQLAlchemy batches INSERT first.
+    db.flush()
 
     components: list[tuple] = []
     for index, item_input in enumerate(items):
