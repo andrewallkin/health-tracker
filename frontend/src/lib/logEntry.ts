@@ -1,5 +1,6 @@
 import { scaleMacros } from "./aggregates";
-import type { LogEntry, MealSlot, SavedMeal } from "../types/nutrition";
+import type { QuickLogPayload } from "./quickLog";
+import type { LogEntry, MealSlot, SavedFood, SavedMeal } from "../types/nutrition";
 
 export function formatLogTime(date = new Date()): string {
   return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -14,6 +15,11 @@ export interface LogMealPayload {
   servings: number;
 }
 
+export interface LogFoodPayload {
+  slot: MealSlot;
+  portions: number;
+}
+
 export function buildLogEntryFromSavedMeal(
   meal: SavedMeal,
   { slot, servings }: LogMealPayload,
@@ -26,7 +32,17 @@ export function buildLogEntryFromSavedMeal(
     time: formatLogTime(),
     servings,
     savedMealId: meal.id,
-    imageUrl: meal.imageUrl,
     ...macros,
+  };
+}
+
+export function buildQuickLogPayloadFromSavedFood(
+  food: SavedFood,
+  { slot, portions }: LogFoodPayload,
+): QuickLogPayload {
+  return {
+    name: food.name,
+    slot,
+    ...scaleMacros(food, portions),
   };
 }

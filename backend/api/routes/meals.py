@@ -12,6 +12,7 @@ from ..compose import sum_components
 from ..deps import get_current_user
 from ..mappers import saved_meal_to_schema
 from ..ownership import get_owned_food, get_owned_meal
+from ..photo_storage import normalize_image_url_for_storage
 from ..schemas import SavedMeal, SavedMealCreate, SavedMealItemInput, SavedMealUpdate
 
 router = APIRouter(prefix="/meals", tags=["meals"])
@@ -35,6 +36,9 @@ def _apply_composed_items(
     for item in list(meal.items):
         db.delete(item)
     meal.items.clear()
+    # Flush deletes before inserting replacements — otherwise PostgreSQL can
+    # hit uq_saved_meal_items_meal_food when SQLAlchemy batches INSERT first.
+    db.flush()
 
     components: list[tuple] = []
     for index, item_input in enumerate(items):
@@ -85,7 +89,7 @@ def create_meal(
         user_id=user.id,
         name=payload.name.strip(),
         description=payload.description,
-        image_url=payload.imageUrl,
+        image_url=normalize_image_url_for_storage(payload.imageUrl, user_id=user.id),
         kind="manual",
         calories=payload.calories or 0,
         protein=payload.protein or 0,
@@ -155,6 +159,8 @@ def update_meal(
             value = updates[api_field]
             if api_field == "name" and isinstance(value, str):
                 value = value.strip()
+            if api_field == "imageUrl":
+                value = normalize_image_url_for_storage(value, user_id=user.id)
             setattr(row, orm_field, value)
 
     db.commit()

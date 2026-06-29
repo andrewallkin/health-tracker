@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from fastapi import HTTPException
 
@@ -33,6 +34,70 @@ def resolve_image_url_for_response(
     if is_gcs_object_path(stored) and gcs.is_available():
         return gcs.generate_signed_url(stored)
     return stored
+
+
+def _extract_gcs_path_from_signed_url(url: str) -> str | None:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return None
+    if parsed.netloc not in ("storage.googleapis.com", "storage.cloud.google.com"):
+        return None
+
+    settings = get_settings()
+    path = unquote(parsed.path.lstrip("/"))
+    if not path:
+        return None
+
+    bucket = settings.gcs_images_bucket_name
+    if bucket and path.startswith(f"{bucket}/"):
+        object_path = path[len(bucket) + 1 :]
+        if is_gcs_object_path(object_path):
+            return object_path
+
+    for folder in (settings.gcs_meal_photos_folder, settings.gcs_check_in_photos_folder):
+        marker = f"{folder}/"
+        idx = path.find(marker)
+        if idx >= 0:
+            candidate = path[idx:]
+            if is_gcs_object_path(candidate):
+                return candidate
+
+    return None
+
+
+def normalize_image_url_for_storage(
+    reference: str | None,
+    *,
+    user_id: str | None = None,
+) -> str | None:
+    """Convert client image references to a storable path before persisting."""
+    if not reference:
+        return None
+
+    reference = reference.strip()
+    if not reference:
+        return None
+
+    if is_gcs_object_path(reference):
+        if user_id:
+            validate_gcs_path_for_user(reference, user_id)
+        return reference
+
+    if reference.startswith("/api/photos/") or reference.startswith("data:"):
+        return reference
+
+    extracted = _extract_gcs_path_from_signed_url(reference)
+    if extracted:
+        if user_id:
+            validate_gcs_path_for_user(extracted, user_id)
+        return extracted
+
+    if reference.startswith("http://") or reference.startswith("https://"):
+        if len(reference) > 512:
+            raise HTTPException(status_code=422, detail="Image URL is too long to store")
+        return reference
+
+    return reference
 
 
 def _validate_gcs_folder_path(object_path: str, user_id: str, folder: str) -> None:

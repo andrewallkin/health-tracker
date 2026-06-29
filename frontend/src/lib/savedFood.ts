@@ -3,6 +3,7 @@ import type { FoodTag, SavedFood, SavedMeal } from "../types/nutrition";
 export interface NewSavedFoodPayload {
   name: string;
   description?: string;
+  imageUrl?: string;
   calories: number;
   protein: number;
   carbs: number;

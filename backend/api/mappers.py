@@ -68,12 +68,13 @@ def daily_goal_to_schema(row: DailyGoalRow) -> DailyGoal:
     )
 
 
-def saved_food_to_schema(row: SavedFoodRow) -> SavedFood:
+def saved_food_to_schema(row: SavedFoodRow, gcs: GCSService) -> SavedFood:
     tags = row.tags if isinstance(row.tags, list) else []
     return SavedFood(
         id=row.id,
         name=row.name,
         description=row.description,
+        imageUrl=resolve_image_url_for_response(row.image_url, gcs),
         calories=row.calories,
         protein=row.protein,
         carbs=row.carbs,

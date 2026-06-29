@@ -3,6 +3,7 @@ import { AddFoodHubPage } from "../nutrition/pages/AddFoodHubPage";
 import { DescribeFoodPage } from "../nutrition/pages/DescribeFoodPage";
 import { EstimateReviewPage } from "../nutrition/pages/EstimateReviewPage";
 import { GoalsSettingsPage } from "../nutrition/pages/GoalsSettingsPage";
+import { LogFoodPage } from "../nutrition/pages/LogFoodPage";
 import { LogMealPage } from "../nutrition/pages/LogMealPage";
 import { NewFoodPage } from "../nutrition/pages/NewFoodPage";
 import { NewMealPage } from "../nutrition/pages/NewMealPage";
@@ -15,6 +16,8 @@ import { reviewedToQuickLog, reviewedToSavedFood, reviewedToSavedMeal } from "..
 import { isFutureDate } from "../../lib/logLabels";
 import { findSavedFood } from "../../lib/savedFood";
 import { findSavedMeal } from "../../lib/savedMeal";
+import { buildQuickLogPayloadFromSavedFood } from "../../lib/logEntry";
+import { defaultMealSlot } from "../../lib/quickLog";
 import type { AppView } from "../../types/nutrition";
 import { PageShell } from "./PageShell";
 
@@ -189,6 +192,7 @@ export function AppFlowViews({
         onCreateNewMeal={() => onViewChange({ type: "new-meal" })}
         onCreateNewFood={() => onViewChange({ type: "new-food" })}
         onSelectMeal={(mealId) => onViewChange({ type: "log-meal", mealId })}
+        onSelectFood={(foodId) => onViewChange({ type: "log-food", foodId })}
         onEditMeal={(mealId) => onViewChange({ type: "edit-meal", mealId })}
         onEditFood={(foodId) => onViewChange({ type: "edit-food", foodId })}
       />
@@ -199,8 +203,20 @@ export function AppFlowViews({
     return (
       <NewFoodPage
         onBack={() => onViewChange({ type: "saved-meals", tab: "foods" })}
-        onSave={async (payload) => {
+        onSave={async (payload, options) => {
           await addSavedFood(payload);
+          if (options?.logToDay && !isFutureDate(selectedDate)) {
+            await addQuickLogEntry({
+              name: payload.name,
+              slot: defaultMealSlot(),
+              calories: payload.calories,
+              protein: payload.protein,
+              carbs: payload.carbs,
+              fat: payload.fat,
+            });
+            onViewChange({ type: "today" });
+            return;
+          }
           onViewChange({ type: "saved-meals", tab: "foods" });
         }}
       />
@@ -295,6 +311,30 @@ export function AppFlowViews({
           } else {
             await addQuickLogEntry(payload);
           }
+          onViewChange({ type: "today" });
+        }}
+      />
+    );
+  }
+
+  if (view.type === "log-food") {
+    const food = findSavedFood(savedFoods, view.foodId);
+    if (!food) {
+      return (
+        <PageShell title="Food not found" onBack={() => onViewChange({ type: "saved-meals", tab: "foods" })}>
+          <p className="text-sm text-zinc-500">This saved food could not be loaded.</p>
+        </PageShell>
+      );
+    }
+
+    return (
+      <LogFoodPage
+        foods={savedFoods}
+        foodId={view.foodId}
+        logDate={selectedDate}
+        onBack={() => onViewChange({ type: "saved-meals", tab: "foods" })}
+        onConfirm={async (payload) => {
+          await addQuickLogEntry(buildQuickLogPayloadFromSavedFood(food, payload));
           onViewChange({ type: "today" });
         }}
       />

@@ -17,6 +17,7 @@ interface SavedMealsPageProps {
   onCreateNewMeal: () => void;
   onCreateNewFood: () => void;
   onSelectMeal: (mealId: string) => void;
+  onSelectFood: (foodId: string) => void;
   onEditMeal: (mealId: string) => void;
   onEditFood: (foodId: string) => void;
 }
@@ -29,6 +30,7 @@ export function SavedMealsPage({
   onCreateNewMeal,
   onCreateNewFood,
   onSelectMeal,
+  onSelectFood,
   onEditMeal,
   onEditFood,
 }: SavedMealsPageProps) {
@@ -119,7 +121,12 @@ export function SavedMealsPage({
           <p className="py-8 text-center text-sm text-zinc-500">No foods match your search.</p>
         ) : (
           filteredFoods.map((food) => (
-            <SavedFoodCard key={food.id} food={food} onEdit={onEditFood} />
+            <SavedFoodCard
+              key={food.id}
+              food={food}
+              onSelect={onSelectFood}
+              onEdit={onEditFood}
+            />
           ))
         )}
       </div>

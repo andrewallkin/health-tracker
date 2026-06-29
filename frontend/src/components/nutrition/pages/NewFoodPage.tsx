@@ -4,13 +4,14 @@ import type { NewSavedFoodPayload } from "../../../lib/savedFood";
 import { FOOD_TAG_LABELS, FOOD_TAGS } from "../../../lib/foodTags";
 import type { FoodTag, SavedFood } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
+import { MealPhotoPicker } from "../shared/MealPhotoPicker";
 import { PageShell } from "../../layout/PageShell";
 import { DecimalInput } from "../../shared/DecimalInput";
 
 interface NewFoodPageProps {
   initialFood?: SavedFood;
   onBack: () => void;
-  onSave: (payload: NewSavedFoodPayload) => void | Promise<void>;
+  onSave: (payload: NewSavedFoodPayload, options?: { logToDay?: boolean }) => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
 }
 
@@ -18,11 +19,13 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
   const isEditing = Boolean(initialFood);
   const [name, setName] = useState(initialFood?.name ?? "");
   const [description, setDescription] = useState(initialFood?.description ?? "");
+  const [imageUrl, setImageUrl] = useState<string | undefined>(initialFood?.imageUrl);
   const [calories, setCalories] = useState(String(initialFood?.calories ?? ""));
   const [protein, setProtein] = useState(String(initialFood?.protein ?? ""));
   const [carbs, setCarbs] = useState(String(initialFood?.carbs ?? ""));
   const [fat, setFat] = useState(String(initialFood?.fat ?? ""));
   const [tags, setTags] = useState<FoodTag[]>(initialFood?.tags ?? []);
+  const [logToDay, setLogToDay] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +33,7 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
   const payload: NewSavedFoodPayload = {
     name,
     description: description.trim() || undefined,
+    imageUrl,
     calories: parsePositive(calories),
     protein: parseNonNegative(protein),
     carbs: parseNonNegative(carbs),
@@ -50,7 +54,7 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
     setIsSaving(true);
     setError(null);
     try {
-      await onSave(payload);
+      await onSave(payload, !isEditing && logToDay ? { logToDay: true } : undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save food.");
     } finally {
@@ -78,7 +82,7 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
   return (
     <PageShell
       title={isEditing ? "Edit food" : "New food"}
-      subtitle="Reusable component for composing meals"
+      subtitle="Save to library and log anytime"
       onBack={onBack}
       footer={
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center bg-gradient-to-t from-surface via-surface/90 to-transparent px-4 pb-6 pt-10">
@@ -119,6 +123,8 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
             className={`${inputClass} resize-none`}
           />
         </Field>
+
+        <MealPhotoPicker imageUrl={imageUrl} onChange={setImageUrl} />
 
         <section>
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Tags (optional)</h2>
@@ -169,6 +175,18 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
             <h2 className="mb-3 text-sm font-medium text-zinc-400">Preview</h2>
             <MacroChips macros={payload} size="md" />
           </section>
+        )}
+
+        {!isEditing && (
+          <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/4 px-4 py-3">
+            <input
+              type="checkbox"
+              checked={logToDay}
+              onChange={(e) => setLogToDay(e.target.checked)}
+              className="h-4 w-4 rounded border-white/20 bg-white/5 accent-amber-500"
+            />
+            <span className="text-sm text-zinc-300">Log to today after saving</span>
+          </label>
         )}
 
         {isEditing && onDelete && (

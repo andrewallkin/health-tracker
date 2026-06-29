@@ -133,6 +133,40 @@ def test_user_data_isolation(client):
     assert patch_other_user.status_code == 404
 
 
+def test_create_entry_accepts_gcs_signed_image_url(client, auth_headers):
+    from backend.config import get_settings
+
+    settings = get_settings()
+    user_response = client.get("/api/users/me", headers=auth_headers)
+    user_id = user_response.json()["id"]
+    object_path = f"{settings.gcs_meal_photos_folder}/{user_id}/signed-meal.jpg"
+    signed_url = (
+        f"https://storage.googleapis.com/healthtracker_images/{object_path}"
+        "?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=example"
+        "&X-Goog-Date=20260629T000000Z&X-Goog-Expires=604800"
+        "&X-Goog-SignedHeaders=host&X-Goog-Signature=abc123"
+    )
+
+    response = client.post(
+        "/api/entries",
+        headers=auth_headers,
+        json={
+            "logDate": "2026-06-02",
+            "name": "Signed photo lunch",
+            "slot": "lunch",
+            "time": "13:00",
+            "servings": 1,
+            "calories": 600,
+            "protein": 35,
+            "carbs": 45,
+            "fat": 25,
+            "imageUrl": signed_url,
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["imageUrl"] == object_path
+
+
 def test_entry_image_url_and_saved_meal_fallback(client, auth_headers):
     meal_response = client.post(
         "/api/meals",
@@ -340,6 +374,88 @@ def test_saved_foods_and_composed_meals(client, auth_headers):
     entry_still = client.get("/api/entries", headers=auth_headers, params={"date": "2026-06-03"}).json()[0]
     assert entry_still["id"] == entry_id
     assert entry_still["calories"] == 500
+
+
+def test_composed_meal_update_items(client, auth_headers):
+    mince = client.post(
+        "/api/foods",
+        headers=auth_headers,
+        json={"name": "Mince", "calories": 300, "protein": 25, "carbs": 10, "fat": 15},
+    )
+    assert mince.status_code == 201
+    mince_id = mince.json()["id"]
+
+    rice = client.post(
+        "/api/foods",
+        headers=auth_headers,
+        json={"name": "Rice", "calories": 200, "protein": 4, "carbs": 45, "fat": 1},
+    )
+    assert rice.status_code == 201
+    rice_id = rice.json()["id"]
+
+    meal = client.post(
+        "/api/meals",
+        headers=auth_headers,
+        json={
+            "name": "Bowl",
+            "imageUrl": "/api/photos/bowl.jpg",
+            "items": [
+                {"foodId": mince_id, "quantity": 1, "sortOrder": 0},
+                {"foodId": rice_id, "quantity": 1, "sortOrder": 1},
+            ],
+        },
+    )
+    assert meal.status_code == 201
+    meal_id = meal.json()["id"]
+
+    patch_response = client.patch(
+        f"/api/meals/{meal_id}",
+        headers=auth_headers,
+        json={
+            "imageUrl": "/api/photos/bowl-updated.jpg",
+            "items": [
+                {"foodId": mince_id, "quantity": 1, "sortOrder": 0},
+                {"foodId": rice_id, "quantity": 1, "sortOrder": 1},
+            ],
+        },
+    )
+    assert patch_response.status_code == 200
+    body = patch_response.json()
+    assert body["imageUrl"] == "/api/photos/bowl-updated.jpg"
+    assert body["calories"] == 500
+    assert len(body["items"]) == 2
+
+
+def test_food_image_url(client, auth_headers):
+    create_response = client.post(
+        "/api/foods",
+        headers=auth_headers,
+        json={
+            "name": "Photo yogurt",
+            "imageUrl": "/api/photos/yogurt.jpg",
+            "calories": 100,
+            "protein": 10,
+            "carbs": 8,
+            "fat": 2,
+        },
+    )
+    assert create_response.status_code == 201
+    body = create_response.json()
+    assert body["imageUrl"] == "/api/photos/yogurt.jpg"
+    food_id = body["id"]
+
+    list_response = client.get("/api/foods", headers=auth_headers)
+    assert list_response.status_code == 200
+    listed = next(item for item in list_response.json() if item["id"] == food_id)
+    assert listed["imageUrl"] == "/api/photos/yogurt.jpg"
+
+    patch_response = client.patch(
+        f"/api/foods/{food_id}",
+        headers=auth_headers,
+        json={"imageUrl": "/api/photos/yogurt-updated.jpg"},
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["imageUrl"] == "/api/photos/yogurt-updated.jpg"
 
 
 def test_food_user_isolation(client):

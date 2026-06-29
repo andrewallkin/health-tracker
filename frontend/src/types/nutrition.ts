@@ -32,6 +32,7 @@ export interface SavedFood {
   id: string;
   name: string;
   description?: string;
+  imageUrl?: string;
   calories: number;
   protein: number;
   carbs: number;
@@ -122,4 +123,5 @@ export type AppView =
   | { type: "estimate-review" }
   | { type: "quick-log"; entryId?: string }
   | { type: "log-meal"; mealId: string; entryId?: string }
+  | { type: "log-food"; foodId: string }
   | { type: "check-in"; checkInId?: string };
