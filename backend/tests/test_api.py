@@ -376,6 +376,38 @@ def test_saved_foods_and_composed_meals(client, auth_headers):
     assert entry_still["calories"] == 500
 
 
+def test_food_image_url(client, auth_headers):
+    create_response = client.post(
+        "/api/foods",
+        headers=auth_headers,
+        json={
+            "name": "Photo yogurt",
+            "imageUrl": "/api/photos/yogurt.jpg",
+            "calories": 100,
+            "protein": 10,
+            "carbs": 8,
+            "fat": 2,
+        },
+    )
+    assert create_response.status_code == 201
+    body = create_response.json()
+    assert body["imageUrl"] == "/api/photos/yogurt.jpg"
+    food_id = body["id"]
+
+    list_response = client.get("/api/foods", headers=auth_headers)
+    assert list_response.status_code == 200
+    listed = next(item for item in list_response.json() if item["id"] == food_id)
+    assert listed["imageUrl"] == "/api/photos/yogurt.jpg"
+
+    patch_response = client.patch(
+        f"/api/foods/{food_id}",
+        headers=auth_headers,
+        json={"imageUrl": "/api/photos/yogurt-updated.jpg"},
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["imageUrl"] == "/api/photos/yogurt-updated.jpg"
+
+
 def test_food_user_isolation(client):
     headers_a = register_user(client, "foods-a@example.com")
     headers_b = register_user(client, "foods-b@example.com")

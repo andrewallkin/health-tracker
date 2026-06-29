@@ -7,6 +7,7 @@ import { findSavedFood } from "../../../lib/savedFood";
 import { FOOD_TAG_LABELS } from "../../../lib/foodTags";
 import type { FoodTag, MealSlot, SavedFood } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
+import { MealPhotoView } from "../shared/MealPhotoView";
 import { PageShell } from "../../layout/PageShell";
 
 interface LogFoodPageProps {
@@ -82,6 +83,14 @@ export function LogFoodPage({
           <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
             {error}
           </p>
+        )}
+
+        {food.imageUrl ? (
+          <MealPhotoView src={food.imageUrl} alt={food.name} />
+        ) : (
+          <div className="flex h-32 items-center justify-center rounded-2xl border border-white/10 bg-white/4">
+            <span className="text-4xl opacity-30">🥗</span>
+          </div>
         )}
 
         {food.description && (

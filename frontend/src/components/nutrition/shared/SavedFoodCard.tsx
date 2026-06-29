@@ -17,6 +17,7 @@ export function SavedFoodCard({ food, onSelect, onEdit }: SavedFoodCardProps) {
         className="min-w-0 flex-1 text-left active:scale-[0.99]"
       >
         <div className="flex gap-3 p-3">
+          <FoodThumbnail name={food.name} imageUrl={food.imageUrl} />
           <div className="min-w-0 flex-1 py-0.5">
             <h3 className="font-medium text-zinc-100">{food.name}</h3>
             {food.description && (
@@ -60,6 +61,24 @@ export function SavedFoodCard({ food, onSelect, onEdit }: SavedFoodCardProps) {
       >
         <EditIcon />
       </button>
+    </div>
+  );
+}
+
+function FoodThumbnail({ name, imageUrl }: { name: string; imageUrl?: string }) {
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt={name}
+        className="h-20 w-20 shrink-0 rounded-xl object-cover"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-white/10 to-white/4">
+      <span className="text-2xl opacity-40">🥗</span>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import type { NewSavedFoodPayload } from "../../../lib/savedFood";
 import { FOOD_TAG_LABELS, FOOD_TAGS } from "../../../lib/foodTags";
 import type { FoodTag, SavedFood } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
+import { MealPhotoPicker } from "../shared/MealPhotoPicker";
 import { PageShell } from "../../layout/PageShell";
 import { DecimalInput } from "../../shared/DecimalInput";
 
@@ -18,6 +19,7 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
   const isEditing = Boolean(initialFood);
   const [name, setName] = useState(initialFood?.name ?? "");
   const [description, setDescription] = useState(initialFood?.description ?? "");
+  const [imageUrl, setImageUrl] = useState<string | undefined>(initialFood?.imageUrl);
   const [calories, setCalories] = useState(String(initialFood?.calories ?? ""));
   const [protein, setProtein] = useState(String(initialFood?.protein ?? ""));
   const [carbs, setCarbs] = useState(String(initialFood?.carbs ?? ""));
@@ -31,6 +33,7 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
   const payload: NewSavedFoodPayload = {
     name,
     description: description.trim() || undefined,
+    imageUrl,
     calories: parsePositive(calories),
     protein: parseNonNegative(protein),
     carbs: parseNonNegative(carbs),
@@ -120,6 +123,8 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
             className={`${inputClass} resize-none`}
           />
         </Field>
+
+        <MealPhotoPicker imageUrl={imageUrl} onChange={setImageUrl} />
 
         <section>
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Tags (optional)</h2>

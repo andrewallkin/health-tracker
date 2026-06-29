@@ -169,6 +169,8 @@ export function NewMealPage({
           />
         </Field>
 
+        <MealPhotoPicker imageUrl={imageUrl} onChange={setImageUrl} />
+
         {mode === "manual" && (
           <>
             <Field label="Description (optional)">
@@ -180,8 +182,6 @@ export function NewMealPage({
                 className={`${inputClass} resize-none`}
               />
             </Field>
-
-            <MealPhotoPicker imageUrl={imageUrl} onChange={setImageUrl} />
 
             <section>
               <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition per serving</h2>

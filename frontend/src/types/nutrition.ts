@@ -32,6 +32,7 @@ export interface SavedFood {
   id: string;
   name: string;
   description?: string;
+  imageUrl?: string;
   calories: number;
   protein: number;
   carbs: number;

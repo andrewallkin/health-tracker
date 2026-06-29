@@ -88,6 +88,7 @@ class SavedFood(BaseModel):
     id: str
     name: str
     description: str | None = None
+    imageUrl: str | None = None
     calories: int = Field(gt=0)
     protein: float = Field(ge=0)
     carbs: float = Field(ge=0)
@@ -98,6 +99,7 @@ class SavedFood(BaseModel):
 class SavedFoodCreate(BaseModel):
     name: str
     description: str | None = None
+    imageUrl: str | None = None
     calories: int = Field(gt=0)
     protein: float = Field(ge=0)
     carbs: float = Field(ge=0)
@@ -115,6 +117,7 @@ class SavedFoodCreate(BaseModel):
 class SavedFoodUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    imageUrl: str | None = None
     calories: int | None = Field(default=None, gt=0)
     protein: float | None = Field(default=None, ge=0)
     carbs: float | None = Field(default=None, ge=0)

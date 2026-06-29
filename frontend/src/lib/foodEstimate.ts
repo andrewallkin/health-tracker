@@ -35,6 +35,7 @@ export function reviewedToSavedFood(
   return {
     name: payload.name,
     description: payload.description,
+    imageUrl: payload.imageUrl,
     calories: payload.calories,
     protein: payload.protein,
     carbs: payload.carbs,
