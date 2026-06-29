@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from backend.api.photo_storage import (
     is_gcs_object_path,
+    normalize_image_url_for_storage,
     resolve_image_url_for_response,
     resolve_meal_photo_path,
     validate_check_in_photo_path,
@@ -24,6 +25,23 @@ class _MockGCS:
 
     def generate_signed_url(self, object_path: str) -> str:
         return f"https://signed.example/{object_path}"
+
+
+def test_normalize_image_url_for_storage() -> None:
+    settings = get_settings()
+    user_id = "user-123"
+    object_path = f"{settings.gcs_meal_photos_folder}/{user_id}/meal.jpg"
+    signed_url = (
+        f"https://storage.googleapis.com/healthtracker_images/{object_path}"
+        "?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=example"
+        "&X-Goog-Date=20260629T000000Z&X-Goog-Expires=604800"
+        "&X-Goog-SignedHeaders=host&X-Goog-Signature=abc123"
+    )
+
+    assert normalize_image_url_for_storage(None) is None
+    assert normalize_image_url_for_storage(object_path, user_id=user_id) == object_path
+    assert normalize_image_url_for_storage("/api/photos/u/p.jpg") == "/api/photos/u/p.jpg"
+    assert normalize_image_url_for_storage(signed_url, user_id=user_id) == object_path
 
 
 def test_is_gcs_object_path() -> None:

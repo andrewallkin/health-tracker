@@ -26,7 +26,6 @@ export function buildLogEntryFromSavedMeal(
     time: formatLogTime(),
     servings,
     savedMealId: meal.id,
-    imageUrl: meal.imageUrl,
     ...macros,
   };
 }

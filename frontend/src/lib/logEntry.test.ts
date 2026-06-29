@@ -32,7 +32,7 @@ describe("buildLogEntryFromSavedMeal", () => {
     expect(entry.servings).toBe(2);
     expect(entry.time).toBe("12:30");
     expect(entry.savedMealId).toBe("meal-1");
-    expect(entry.imageUrl).toBe("/api/photos/meal.jpg");
+    expect(entry.imageUrl).toBeUndefined();
     expect(entry.calories).toBe(800);
     expect(entry.protein).toBe(60);
     expect(entry.carbs).toBe(80);

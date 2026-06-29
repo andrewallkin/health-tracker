@@ -11,6 +11,7 @@ from ...gcs import GCSService, get_gcs_service
 from ..deps import get_current_user
 from ..mappers import log_entry_to_schema
 from ..ownership import get_owned_entry, get_owned_meal
+from ..photo_storage import normalize_image_url_for_storage
 from ..schemas import LogEntry, LogEntryCreate, LogEntryUpdate
 
 router = APIRouter(prefix="/entries", tags=["entries"])
@@ -73,7 +74,7 @@ def create_entry(
         carbs=payload.carbs,
         fat=payload.fat,
         saved_meal_id=payload.savedMealId,
-        image_url=payload.imageUrl,
+        image_url=normalize_image_url_for_storage(payload.imageUrl, user_id=user.id),
     )
     db.add(row)
     db.commit()
@@ -114,6 +115,8 @@ def update_entry(
             value = updates[api_field]
             if api_field == "name" and isinstance(value, str):
                 value = value.strip()
+            if api_field == "imageUrl":
+                value = normalize_image_url_for_storage(value, user_id=user.id)
             setattr(row, orm_field, value)
 
     db.commit()

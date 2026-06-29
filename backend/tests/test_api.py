@@ -133,6 +133,40 @@ def test_user_data_isolation(client):
     assert patch_other_user.status_code == 404
 
 
+def test_create_entry_accepts_gcs_signed_image_url(client, auth_headers):
+    from backend.config import get_settings
+
+    settings = get_settings()
+    user_response = client.get("/api/users/me", headers=auth_headers)
+    user_id = user_response.json()["id"]
+    object_path = f"{settings.gcs_meal_photos_folder}/{user_id}/signed-meal.jpg"
+    signed_url = (
+        f"https://storage.googleapis.com/healthtracker_images/{object_path}"
+        "?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=example"
+        "&X-Goog-Date=20260629T000000Z&X-Goog-Expires=604800"
+        "&X-Goog-SignedHeaders=host&X-Goog-Signature=abc123"
+    )
+
+    response = client.post(
+        "/api/entries",
+        headers=auth_headers,
+        json={
+            "logDate": "2026-06-02",
+            "name": "Signed photo lunch",
+            "slot": "lunch",
+            "time": "13:00",
+            "servings": 1,
+            "calories": 600,
+            "protein": 35,
+            "carbs": 45,
+            "fat": 25,
+            "imageUrl": signed_url,
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["imageUrl"] == object_path
+
+
 def test_entry_image_url_and_saved_meal_fallback(client, auth_headers):
     meal_response = client.post(
         "/api/meals",
