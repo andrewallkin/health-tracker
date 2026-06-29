@@ -122,4 +122,5 @@ export type AppView =
   | { type: "estimate-review" }
   | { type: "quick-log"; entryId?: string }
   | { type: "log-meal"; mealId: string; entryId?: string }
+  | { type: "log-food"; foodId: string }
   | { type: "check-in"; checkInId?: string };
