@@ -8,7 +8,9 @@ import {
   type QuickLogPayload,
 } from "../../../lib/quickLog";
 import type { LogEntry, MealSlot, SavedFood } from "../../../types/nutrition";
+import { useEnergyInput } from "../../../hooks/useEnergyInput";
 import { MacroChips } from "../dashboard/MacroChips";
+import { EnergyInputFields } from "../shared/EnergyInputFields";
 import { FoodComposer } from "../shared/FoodComposer";
 import { PageShell } from "../../layout/PageShell";
 import { DecimalInput } from "../../shared/DecimalInput";
@@ -44,7 +46,9 @@ export function QuickLogPage({
   const [mode, setMode] = useState<QuickLogMode>("manual");
   const [name, setName] = useState(initialEntry?.name ?? "");
   const [slot, setSlot] = useState<MealSlot>(initialEntry?.slot ?? defaultMealSlot());
-  const [calories, setCalories] = useState(String(initialEntry?.calories ?? ""));
+  const { kilojoules, calories, onKilojoulesChange, onCaloriesChange } = useEnergyInput(
+    initialEntry?.calories,
+  );
   const [protein, setProtein] = useState(String(initialEntry?.protein ?? ""));
   const [carbs, setCarbs] = useState(String(initialEntry?.carbs ?? ""));
   const [fat, setFat] = useState(String(initialEntry?.fat ?? ""));
@@ -188,15 +192,13 @@ export function QuickLogPage({
           <section>
             <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition</h2>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Calories (kcal)">
-                <DecimalInput
-                  allowDecimal={false}
-                  value={calories}
-                  onChange={setCalories}
-                  placeholder="0"
-                  className={inputClass}
-                />
-              </Field>
+              <EnergyInputFields
+                kilojoules={kilojoules}
+                calories={calories}
+                onKilojoulesChange={onKilojoulesChange}
+                onCaloriesChange={onCaloriesChange}
+                inputClass={inputClass}
+              />
               <Field label="Protein (g)">
                 <DecimalInput value={protein} onChange={setProtein} placeholder="0" className={inputClass} />
               </Field>

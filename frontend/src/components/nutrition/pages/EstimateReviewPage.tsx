@@ -10,7 +10,9 @@ import type {
 } from "../../../types/foodEstimate";
 import type { MealSlot, FoodTag } from "../../../types/nutrition";
 import { FOOD_TAG_LABELS, FOOD_TAGS } from "../../../lib/foodTags";
+import { useEnergyInput } from "../../../hooks/useEnergyInput";
 import { MacroChips } from "../dashboard/MacroChips";
+import { EnergyInputFields } from "../shared/EnergyInputFields";
 import { MealPhotoView } from "../shared/MealPhotoView";
 import { PageShell } from "../../layout/PageShell";
 import { DecimalInput } from "../../shared/DecimalInput";
@@ -39,7 +41,9 @@ export function EstimateReviewPage({
 }: EstimateReviewPageProps) {
   const [name, setName] = useState(estimate.name);
   const [slot, setSlot] = useState<MealSlot>(defaultMealSlot());
-  const [calories, setCalories] = useState(String(estimate.calories_kcal));
+  const { kilojoules, calories, onKilojoulesChange, onCaloriesChange } = useEnergyInput(
+    estimate.calories_kcal,
+  );
   const [protein, setProtein] = useState(String(estimate.macros_g.protein));
   const [carbs, setCarbs] = useState(String(estimate.macros_g.carbs));
   const [fat, setFat] = useState(String(estimate.macros_g.fat));
@@ -120,14 +124,13 @@ export function EstimateReviewPage({
         <section>
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition</h2>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Calories (kcal)">
-              <DecimalInput
-                allowDecimal={false}
-                value={calories}
-                onChange={setCalories}
-                className={inputClass}
-              />
-            </Field>
+            <EnergyInputFields
+              kilojoules={kilojoules}
+              calories={calories}
+              onKilojoulesChange={onKilojoulesChange}
+              onCaloriesChange={onCaloriesChange}
+              inputClass={inputClass}
+            />
             <Field label="Protein (g)">
               <DecimalInput value={protein} onChange={setProtein} className={inputClass} />
             </Field>

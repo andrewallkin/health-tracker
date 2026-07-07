@@ -3,7 +3,9 @@ import { parseNonNegative, parsePositive } from "../../../lib/numericInput";
 import type { NewSavedFoodPayload } from "../../../lib/savedFood";
 import { FOOD_TAG_LABELS, FOOD_TAGS } from "../../../lib/foodTags";
 import type { FoodTag, SavedFood } from "../../../types/nutrition";
+import { useEnergyInput } from "../../../hooks/useEnergyInput";
 import { MacroChips } from "../dashboard/MacroChips";
+import { EnergyInputFields } from "../shared/EnergyInputFields";
 import { MealPhotoPicker } from "../shared/MealPhotoPicker";
 import { PageShell } from "../../layout/PageShell";
 import { DecimalInput } from "../../shared/DecimalInput";
@@ -20,7 +22,9 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
   const [name, setName] = useState(initialFood?.name ?? "");
   const [description, setDescription] = useState(initialFood?.description ?? "");
   const [imageUrl, setImageUrl] = useState<string | undefined>(initialFood?.imageUrl);
-  const [calories, setCalories] = useState(String(initialFood?.calories ?? ""));
+  const { kilojoules, calories, onKilojoulesChange, onCaloriesChange } = useEnergyInput(
+    initialFood?.calories,
+  );
   const [protein, setProtein] = useState(String(initialFood?.protein ?? ""));
   const [carbs, setCarbs] = useState(String(initialFood?.carbs ?? ""));
   const [fat, setFat] = useState(String(initialFood?.fat ?? ""));
@@ -149,15 +153,13 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
         <section>
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition per portion</h2>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Calories (kcal)">
-              <DecimalInput
-                allowDecimal={false}
-                value={calories}
-                onChange={setCalories}
-                placeholder="0"
-                className={inputClass}
-              />
-            </Field>
+            <EnergyInputFields
+              kilojoules={kilojoules}
+              calories={calories}
+              onKilojoulesChange={onKilojoulesChange}
+              onCaloriesChange={onCaloriesChange}
+              inputClass={inputClass}
+            />
             <Field label="Protein (g)">
               <DecimalInput value={protein} onChange={setProtein} placeholder="0" className={inputClass} />
             </Field>
