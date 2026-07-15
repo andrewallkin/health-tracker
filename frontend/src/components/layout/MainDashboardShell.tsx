@@ -1,7 +1,9 @@
 import { CheckInDayView } from "../checkin/CheckInDayView";
 import { CheckInMonthView } from "../checkin/CheckInMonthView";
 import { CheckInWeekView } from "../checkin/CheckInWeekView";
-import { HealthUnderConstructionPage } from "../health/HealthUnderConstructionPage";
+import { HealthDayView } from "../health/HealthDayView";
+import { HealthMonthView } from "../health/HealthMonthView";
+import { HealthWeekView } from "../health/HealthWeekView";
 import { Dashboard } from "../nutrition/dashboard/Dashboard";
 import { MonthView } from "../nutrition/dashboard/MonthView";
 import { WeekView } from "../nutrition/dashboard/WeekView";
@@ -143,7 +145,25 @@ export function MainDashboardShell({
           />
         )}
 
-        {appSection === "health" && <HealthUnderConstructionPage />}
+        {appSection === "health" && dashboardTab === "day" && (
+          <HealthDayView selectedDate={selectedDate} onDateChange={onDateChange} />
+        )}
+
+        {appSection === "health" && dashboardTab === "week" && (
+          <HealthWeekView
+            anchorDate={selectedDate}
+            onAnchorChange={onDateChange}
+            onSelectDate={onOpenDay}
+          />
+        )}
+
+        {appSection === "health" && dashboardTab === "month" && (
+          <HealthMonthView
+            anchorDate={selectedDate}
+            onAnchorChange={onDateChange}
+            onSelectDate={onOpenDay}
+          />
+        )}
 
         {appSection === "check-in" && dashboardTab === "day" && (
           <CheckInDayView
@@ -174,9 +194,7 @@ export function MainDashboardShell({
         )}
       </div>
 
-      {(appSection === "nutrition" || appSection === "check-in") && (
-        <HomeFooter active={dashboardTab} onChange={onDashboardTabChange} />
-      )}
+      <HomeFooter active={dashboardTab} onChange={onDashboardTabChange} />
     </>
   );
 }
