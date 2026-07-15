@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { aggregateMonth, calorieHeatLevel, groupEntriesByDate } from "../../../lib/aggregates";
-import { fetchEntriesInRange } from "../../../lib/api";
+import { fetchDayStatusesInRange, fetchEntriesInRange } from "../../../lib/api";
 import {
   addMonths,
   formatMonthYear,
@@ -38,15 +38,20 @@ export function MonthView({
   const rangeEnd = gridDates[gridDates.length - 1];
   const fetchKey = `${rangeStart}:${rangeEnd}:${entriesVersion}`;
   const [entriesByDate, setEntriesByDate] = useState<Map<string, LogEntry[]>>(new Map());
+  const [notTrackedDates, setNotTrackedDates] = useState<Set<string>>(new Set());
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const loading = loadedKey !== fetchKey;
 
   useEffect(() => {
     let cancelled = false;
-    fetchEntriesInRange(rangeStart, rangeEnd)
-      .then((entries) => {
+    Promise.all([
+      fetchEntriesInRange(rangeStart, rangeEnd),
+      fetchDayStatusesInRange(rangeStart, rangeEnd),
+    ])
+      .then(([entries, statuses]) => {
         if (!cancelled) {
           setEntriesByDate(groupEntriesByDate(entries));
+          setNotTrackedDates(new Set(statuses.map((s) => s.statusDate)));
           setLoadedKey(fetchKey);
         }
       })
@@ -57,8 +62,8 @@ export function MonthView({
   }, [fetchKey, rangeStart, rangeEnd]);
 
   const summary = useMemo(
-    () => aggregateMonth(year, month, goal, entriesByDate),
-    [year, month, goal, entriesByDate],
+    () => aggregateMonth(year, month, goal, entriesByDate, notTrackedDates),
+    [year, month, goal, entriesByDate, notTrackedDates],
   );
 
   return (
@@ -92,9 +97,11 @@ export function MonthView({
           <div className="grid grid-cols-7 gap-1">
             {summary.days.map((day) => {
               const inMonth = isSameMonth(day.date, year, month);
-              const heat = calorieHeatLevel(day.consumed.calories, goal.calories);
               const future = isFutureDate(day.date);
               const today = isToday(day.date);
+              const heat = day.notTracked
+                ? "none"
+                : calorieHeatLevel(day.consumed.calories, goal.calories);
 
               return (
                 <button
@@ -111,14 +118,19 @@ export function MonthView({
                     heat === "under" && "bg-emerald-500/15 text-emerald-300",
                     heat === "near" && "bg-amber-500/15 text-amber-300",
                     heat === "over" && "bg-rose-500/15 text-rose-300",
+                    day.notTracked && inMonth && !future && "bg-zinc-800/40 text-zinc-500",
                     future && "cursor-not-allowed opacity-40",
                   ]
                     .filter(Boolean)
                     .join(" ")}
                 >
                   <span className="font-medium">{parseDateKey(day.date).getDate()}</span>
-                  {day.hasEntries && (
-                    <span className="text-[10px] opacity-80">{day.consumed.calories}</span>
+                  {day.notTracked && inMonth && !future ? (
+                    <span className="text-[9px] opacity-80">N/T</span>
+                  ) : (
+                    day.countsInAverages && (
+                      <span className="text-[10px] opacity-80">{day.consumed.calories}</span>
+                    )
                   )}
                 </button>
               );

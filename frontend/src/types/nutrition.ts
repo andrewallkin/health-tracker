@@ -11,6 +11,12 @@ export interface DailyGoal {
   fat: number;
 }
 
+/** Presence of a day status means the day is manually marked not tracked. */
+export interface DayStatus {
+  id: string;
+  statusDate: string;
+}
+
 export interface SavedMealItem {
   foodId: string;
   quantity: number;
@@ -87,6 +93,10 @@ export interface DailyTotals {
   goal: DailyGoal;
   hasEntries: boolean;
   onTarget: boolean;
+  /** True when empty or manually marked not tracked. */
+  notTracked: boolean;
+  /** True when day has entries and is not manually excluded. */
+  countsInAverages: boolean;
 }
 
 export interface WeekSummary {

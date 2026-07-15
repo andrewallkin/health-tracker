@@ -53,12 +53,12 @@ function averageTotals(days: DailyTotals[]): MacroTotals {
     return { calories: 0, protein: 0, carbs: 0, fat: 0 };
   }
 
-  const logged = days.filter((d) => d.hasEntries);
-  if (logged.length === 0) {
+  const counted = days.filter((d) => d.countsInAverages);
+  if (counted.length === 0) {
     return { calories: 0, protein: 0, carbs: 0, fat: 0 };
   }
 
-  const sum = logged.reduce(
+  const sum = counted.reduce(
     (acc, day) => ({
       calories: acc.calories + day.consumed.calories,
       protein: acc.protein + day.consumed.protein,
@@ -69,10 +69,10 @@ function averageTotals(days: DailyTotals[]): MacroTotals {
   );
 
   return {
-    calories: Math.round(sum.calories / logged.length),
-    protein: Math.round(sum.protein / logged.length),
-    carbs: Math.round(sum.carbs / logged.length),
-    fat: Math.round(sum.fat / logged.length),
+    calories: Math.round(sum.calories / counted.length),
+    protein: Math.round(sum.protein / counted.length),
+    carbs: Math.round(sum.carbs / counted.length),
+    fat: Math.round(sum.fat / counted.length),
   };
 }
 
@@ -91,14 +91,18 @@ export function getDailyTotals(
   dateKey: string,
   goal: DailyGoal,
   entries: LogEntry[],
+  manuallyNotTracked = false,
 ): DailyTotals {
   const consumed = sumEntries(entries);
+  const hasEntries = entries.length > 0;
   return {
     date: dateKey,
     consumed,
     goal,
-    hasEntries: entries.length > 0,
+    hasEntries,
     onTarget: isOnTarget(consumed, goal),
+    notTracked: !hasEntries || manuallyNotTracked,
+    countsInAverages: hasEntries && !manuallyNotTracked,
   };
 }
 
@@ -106,17 +110,19 @@ export function aggregateWeek(
   dates: string[],
   goal: DailyGoal,
   entriesByDate: Map<string, LogEntry[]>,
+  notTrackedDates: ReadonlySet<string> = new Set(),
 ): WeekSummary {
   const days = dates.map((date) =>
-    getDailyTotals(date, goal, entriesByDate.get(date) ?? []),
+    getDailyTotals(date, goal, entriesByDate.get(date) ?? [], notTrackedDates.has(date)),
   );
+  const counted = days.filter((d) => d.countsInAverages);
   return {
     startDate: dates[0],
     endDate: dates[dates.length - 1],
     days,
     averages: averageTotals(days),
-    daysLogged: days.filter((d) => d.hasEntries).length,
-    daysOnTarget: days.filter((d) => d.onTarget).length,
+    daysLogged: counted.length,
+    daysOnTarget: counted.filter((d) => d.onTarget).length,
   };
 }
 
@@ -125,18 +131,19 @@ export function aggregateMonth(
   month: number,
   goal: DailyGoal,
   entriesByDate: Map<string, LogEntry[]>,
+  notTrackedDates: ReadonlySet<string> = new Set(),
 ): MonthSummary {
   const gridDates = getMonthGrid(year, month);
   const days = gridDates.map((date) =>
-    getDailyTotals(date, goal, entriesByDate.get(date) ?? []),
+    getDailyTotals(date, goal, entriesByDate.get(date) ?? [], notTrackedDates.has(date)),
   );
   const inMonth = days.filter((d) => {
     const [y, m] = d.date.split("-").map(Number);
     return y === year && m - 1 === month;
   });
-  const logged = inMonth.filter((d) => d.hasEntries);
+  const counted = inMonth.filter((d) => d.countsInAverages);
 
-  const totals = logged.reduce(
+  const totals = counted.reduce(
     (acc, day) => ({
       calories: acc.calories + day.consumed.calories,
       protein: acc.protein + day.consumed.protein,
@@ -152,8 +159,8 @@ export function aggregateMonth(
     days,
     totals,
     averages: averageTotals(inMonth),
-    daysLogged: logged.length,
-    daysOnTarget: logged.filter((d) => d.onTarget).length,
+    daysLogged: counted.length,
+    daysOnTarget: counted.filter((d) => d.onTarget).length,
   };
 }
 

@@ -214,6 +214,25 @@ class CheckInPhotoRow(Base):
     check_in: Mapped[CheckInRow] = relationship("CheckInRow", back_populates="photos")
 
 
+class DayStatusRow(Base):
+    """Presence of a row means the day is manually marked not tracked."""
+
+    __tablename__ = "day_statuses"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    status_date: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (UniqueConstraint("user_id", "status_date", name="uq_day_statuses_user_date"),)
+
+
 class AppSettingsRow(Base):
     __tablename__ = "app_settings"
 

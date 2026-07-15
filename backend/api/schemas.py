@@ -256,3 +256,12 @@ class CheckInUpsert(BaseModel):
     weightKg: float | None = None
     notes: str | None = None
     photoPaths: list[str] = Field(default_factory=list, max_length=10)
+
+
+class DayStatus(BaseModel):
+    id: str
+    statusDate: str
+
+
+class DayStatusUpsert(BaseModel):
+    statusDate: str

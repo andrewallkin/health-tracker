@@ -56,9 +56,12 @@ export function MainDashboardShell({
     loadError,
     deleteEntryError,
     nutritionReady,
+    isNotTracked,
     handleDeleteEntry,
     dismissDeleteEntryError,
     retryBootstrap,
+    markSelectedDayNotTracked,
+    unmarkSelectedDayNotTracked,
   } = nutrition;
 
   return (
@@ -93,10 +96,13 @@ export function MainDashboardShell({
             selectedDate={selectedDate}
             entries={entries}
             goal={goal}
+            isNotTracked={isNotTracked}
             deleteError={deleteEntryError}
             onDismissDeleteError={dismissDeleteEntryError}
             onDateChange={onDateChange}
             onDeleteEntry={handleDeleteEntry}
+            onMarkNotTracked={markSelectedDayNotTracked}
+            onUnmarkNotTracked={unmarkSelectedDayNotTracked}
             onEditEntry={(id) => {
               const entry = entries.find((e) => e.id === id);
               if (!entry) return;

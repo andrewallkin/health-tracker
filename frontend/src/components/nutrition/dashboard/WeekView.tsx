@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { aggregateWeek, calorieHeatLevel, groupEntriesByDate } from "../../../lib/aggregates";
-import { fetchEntriesInRange } from "../../../lib/api";
+import { fetchDayStatusesInRange, fetchEntriesInRange } from "../../../lib/api";
 import {
   addWeeks,
   formatWeekRange,
@@ -31,15 +31,17 @@ export function WeekView({
   const { start, end, dates } = getWeekRange(anchorDate);
   const fetchKey = `${start}:${end}:${entriesVersion}`;
   const [entriesByDate, setEntriesByDate] = useState<Map<string, LogEntry[]>>(new Map());
+  const [notTrackedDates, setNotTrackedDates] = useState<Set<string>>(new Set());
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const loading = loadedKey !== fetchKey;
 
   useEffect(() => {
     let cancelled = false;
-    fetchEntriesInRange(start, end)
-      .then((entries) => {
+    Promise.all([fetchEntriesInRange(start, end), fetchDayStatusesInRange(start, end)])
+      .then(([entries, statuses]) => {
         if (!cancelled) {
           setEntriesByDate(groupEntriesByDate(entries));
+          setNotTrackedDates(new Set(statuses.map((s) => s.statusDate)));
           setLoadedKey(fetchKey);
         }
       })
@@ -50,10 +52,14 @@ export function WeekView({
   }, [fetchKey, start, end]);
 
   const summary = useMemo(
-    () => aggregateWeek(dates, goal, entriesByDate),
-    [dates, goal, entriesByDate],
+    () => aggregateWeek(dates, goal, entriesByDate, notTrackedDates),
+    [dates, goal, entriesByDate, notTrackedDates],
   );
-  const maxCalories = Math.max(goal.calories, ...summary.days.map((d) => d.consumed.calories), 1);
+  const maxCalories = Math.max(
+    goal.calories,
+    ...summary.days.filter((d) => d.countsInAverages).map((d) => d.consumed.calories),
+    1,
+  );
 
   return (
     <div className={PAGE_SHELL}>
@@ -89,12 +95,19 @@ export function WeekView({
             style={{ bottom: `${(goal.calories / maxCalories) * 100}%` }}
           />
           {summary.days.map((day) => {
-            const heightPct = day.consumed.calories > 0 ? (day.consumed.calories / maxCalories) * 100 : 0;
-            const heat = calorieHeatLevel(day.consumed.calories, goal.calories);
             const future = isFutureDate(day.date);
+            const heightPct =
+              day.countsInAverages && day.consumed.calories > 0
+                ? (day.consumed.calories / maxCalories) * 100
+                : 0;
+            const heat = day.notTracked
+              ? "none"
+              : calorieHeatLevel(day.consumed.calories, goal.calories);
             const barColor =
               future
                 ? "bg-zinc-800/20"
+                : day.notTracked
+                ? "bg-zinc-700/40"
                 : heat === "none"
                 ? "bg-zinc-700/40"
                 : heat === "under"
@@ -103,15 +116,27 @@ export function WeekView({
                     ? "bg-amber-500/80"
                     : "bg-rose-500/70";
 
+            const calorieLabel = day.notTracked
+              ? "N/T"
+              : day.consumed.calories > 0
+                ? String(day.consumed.calories)
+                : "—";
+
             const bar = (
               <>
-                <span className="text-[10px] font-medium text-zinc-500 opacity-0 transition group-hover:opacity-100">
-                  {day.consumed.calories > 0 ? day.consumed.calories : "—"}
+                <span
+                  className={`text-[10px] font-medium text-zinc-500 ${
+                    day.notTracked && !future ? "opacity-100" : "opacity-0 transition group-hover:opacity-100"
+                  }`}
+                >
+                  {calorieLabel}
                 </span>
                 <div className="relative flex h-36 w-full items-end">
                   <div
                     className={`w-full rounded-t-md transition group-hover:opacity-90 ${barColor} ${isToday(day.date) ? "ring-1 ring-white/30" : ""}`}
-                    style={{ height: `${Math.max(heightPct, day.hasEntries ? 4 : 2)}%` }}
+                    style={{
+                      height: `${Math.max(heightPct, day.countsInAverages ? 4 : 2)}%`,
+                    }}
                   />
                 </div>
                 <span
@@ -160,8 +185,8 @@ export function WeekView({
 function Stat({ label, value, accent }: { label: string; value: string | number; accent: string }) {
   return (
     <div className="text-center">
-      <p className={`text-[10px] font-bold uppercase tracking-wider ${accent}`}>{label}</p>
-      <p className="mt-1 text-lg font-bold text-white">{value}</p>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className={`mt-1 text-lg font-semibold tabular-nums ${accent}`}>{value}</p>
     </div>
   );
 }
