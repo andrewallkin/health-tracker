@@ -28,6 +28,16 @@ export interface AiSettingsUpdate {
   imageModel: string;
 }
 
+export interface GarminSettings {
+  connected: boolean;
+  email: string | null;
+}
+
+export interface GarminConnectRequest {
+  email: string;
+  password: string;
+}
+
 export interface ModelOption {
   id: string;
   label: string;
@@ -279,6 +289,22 @@ export async function updateAiSettings(payload: AiSettingsUpdate): Promise<AiSet
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchGarminSettings(): Promise<GarminSettings> {
+  return request<GarminSettings>("/settings/garmin");
+}
+
+export async function connectGarmin(payload: GarminConnectRequest): Promise<GarminSettings> {
+  return request<GarminSettings>("/settings/garmin/connect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function disconnectGarmin(): Promise<GarminSettings> {
+  return request<GarminSettings>("/settings/garmin", { method: "DELETE" });
 }
 
 export async function fetchModelOptions(): Promise<ModelOption[]> {

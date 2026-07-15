@@ -21,6 +21,8 @@ dependencies = [
     "passlib[bcrypt]",
     "bcrypt>=4.0.1,<4.1",
     "google-cloud-storage",
+    "garminconnect>=0.3.2",
+    "curl-cffi>=0.15.0",
 ]
 
 [tool.uv]

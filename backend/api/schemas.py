@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 MealSlot = Literal["breakfast", "lunch", "dinner", "snack"]
@@ -201,6 +201,16 @@ class AiSettingsUpdate(BaseModel):
     clearApiKey: bool = False
     textModel: str
     imageModel: str
+
+
+class GarminSettings(BaseModel):
+    connected: bool
+    email: str | None = None
+
+
+class GarminConnectRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1)
 
 
 class ModelOption(BaseModel):
