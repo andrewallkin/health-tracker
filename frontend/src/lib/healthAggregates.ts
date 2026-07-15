@@ -1,4 +1,4 @@
-import { getMockHealthDay, getMockHealthRange } from "../data/mockHealth";
+import { emptyHealthDay, getMockHealthDay, getMockHealthRange } from "../data/mockHealth";
 import { getMonthGrid, getWeekRange } from "./dates";
 import type {
   ActivityType,
@@ -18,13 +18,13 @@ function averageNullable(values: Array<number | null>): number | null {
   return Math.round(average(valid));
 }
 
-export function getHealthDay(dateKey: string): DailyHealth {
+export function getHealthDay(dateKey: string): DailyHealth | null {
   return getMockHealthDay(dateKey);
 }
 
 export function aggregateHealthWeek(anchorDate: string): HealthWeekSummary {
   const { start, end, dates } = getWeekRange(anchorDate);
-  const days = dates.map((date) => getMockHealthDay(date));
+  const days = dates.map((date) => getMockHealthDay(date) ?? emptyHealthDay(date));
 
   const totalWorkoutMin = days.reduce(
     (sum, day) => sum + day.activities.reduce((a, act) => a + act.durationMin, 0),
@@ -38,9 +38,8 @@ export function aggregateHealthWeek(anchorDate: string): HealthWeekSummary {
     avgSteps: Math.round(average(days.map((d) => d.steps))),
     avgSleepHours: Math.round(average(days.map((d) => d.sleepHours)) * 10) / 10,
     avgActiveCalories: Math.round(average(days.map((d) => d.activeCalories))),
-    avgStress: Math.round(average(days.map((d) => d.avgStress))),
     avgHrv: averageNullable(days.map((d) => d.hrv)),
-    stepGoalDays: days.filter((d) => d.steps >= d.stepGoal).length,
+    stepGoalDays: days.filter((d) => d.steps >= d.stepGoal && d.steps > 0).length,
     totalActivities: days.reduce((sum, d) => sum + d.activities.length, 0),
     totalWorkoutMin,
   };
@@ -52,7 +51,7 @@ export function aggregateHealthMonth(anchorDate: string): HealthMonthSummary {
   const month = Number(monthStr) - 1;
 
   const gridDates = getMonthGrid(year, month);
-  const days = gridDates.map((date) => getMockHealthDay(date));
+  const days = gridDates.map((date) => getMockHealthDay(date) ?? emptyHealthDay(date));
   const inMonth = days.filter((d) => {
     const [y, m] = d.date.split("-").map(Number);
     return y === year && m - 1 === month;
@@ -81,7 +80,7 @@ export function aggregateHealthMonth(anchorDate: string): HealthMonthSummary {
     avgSteps: Math.round(average(inMonth.map((d) => d.steps))),
     avgSleepHours: Math.round(average(inMonth.map((d) => d.sleepHours)) * 10) / 10,
     avgActiveCalories: Math.round(average(inMonth.map((d) => d.activeCalories))),
-    stepGoalDays: inMonth.filter((d) => d.steps >= d.stepGoal).length,
+    stepGoalDays: inMonth.filter((d) => d.steps >= d.stepGoal && d.steps > 0).length,
     totalActivities: inMonth.reduce((sum, d) => sum + d.activities.length, 0),
     activityByType,
   };

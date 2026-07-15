@@ -1,15 +1,16 @@
-import type { ReactNode } from "react";
+import { useState } from "react";
 import { HRV_STATUS_LABELS } from "../../data/mockHealth";
+import { formatHoursAsHm } from "../../lib/formatDuration";
 import { getHealthDay } from "../../lib/healthAggregates";
 import { addDays, formatDayHeader, isToday, toDateKey } from "../../lib/dates";
 import { PAGE_SHELL } from "../../lib/layout";
 import { isFutureDate } from "../../lib/logLabels";
+import type { DailyHealth } from "../../types/health";
 import { DateNav } from "../layout/DateNav";
 import { HealthActivityList } from "./HealthActivityList";
-import { HealthSparkChart } from "./HealthSparkChart";
-import { TargetProgressBar } from "./TargetProgressBar";
+import { HealthDetailModal, type HealthDetailRow } from "./HealthDetailModal";
 
-const SLEEP_TARGET_HOURS = 8;
+type DetailKind = "sleep" | "hr" | "hrv";
 
 interface HealthDayViewProps {
   selectedDate: string;
@@ -20,19 +21,14 @@ export function HealthDayView({ selectedDate, onDateChange }: HealthDayViewProps
   const day = getHealthDay(selectedDate);
   const title = isToday(selectedDate) ? "Today" : formatDayHeader(selectedDate);
   const future = isFutureDate(selectedDate);
+  const [detail, setDetail] = useState<DetailKind | null>(null);
+
   const hrvAccent =
-    day.hrvStatus === "low"
+    day?.hrvStatus === "low"
       ? "text-rose-400"
-      : day.hrvStatus === "high"
+      : day?.hrvStatus === "high"
         ? "text-violet-400"
         : "text-emerald-400";
-
-  const sleepDetail = [
-    `${day.deepSleepHours}h deep`,
-    day.sleepScore !== null ? `score ${day.sleepScore}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
 
   return (
     <div className={PAGE_SHELL}>
@@ -50,58 +46,61 @@ export function HealthDayView({ selectedDate, onDateChange }: HealthDayViewProps
         <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
           <p className="text-sm text-zinc-500">No health data for future dates</p>
         </div>
+      ) : !day ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">No health data for this date</p>
+        </div>
       ) : (
         <>
-          <div className="mb-5 space-y-5 rounded-2xl border border-white/10 bg-surface-elevated/80 p-5">
-            <SummarySection emoji="👟" title="Steps">
-              <p className="mb-3 text-3xl font-bold tracking-tight text-white">
-                {day.steps.toLocaleString()}
-              </p>
-              <TargetProgressBar
-                value={day.steps}
-                target={day.stepGoal}
-                label={`Goal ${day.stepGoal.toLocaleString()}`}
-              />
-            </SummarySection>
+          <div className="mb-3 grid grid-cols-2 gap-3">
+            <MetricCard
+              icon="👟"
+              label="Steps"
+              value={day.steps.toLocaleString()}
+              detail={`Goal ${day.stepGoal.toLocaleString()}`}
+              accent="text-sky-400"
+            />
+            <MetricCard
+              icon="😴"
+              label="Sleep"
+              value={formatHoursAsHm(day.sleepHours)}
+              detail={day.sleepScore !== null ? `Score ${day.sleepScore}` : undefined}
+              accent="text-indigo-400"
+              onClick={() => setDetail("sleep")}
+            />
+          </div>
 
-            <SummarySection emoji="😴" title="Sleep" detail={sleepDetail}>
-              <p className="mb-3 text-3xl font-bold tracking-tight text-white">
-                {day.sleepHours}
-                <span className="ml-1.5 text-lg font-normal text-zinc-400">hours</span>
+          <div className="mb-3 rounded-2xl border border-white/10 bg-surface-elevated/70 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="text-base">🔥</span>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                Calories burned
               </p>
-              <TargetProgressBar
-                value={day.sleepHours}
-                target={SLEEP_TARGET_HOURS}
-                label={`Goal ${SLEEP_TARGET_HOURS}h`}
-              />
-            </SummarySection>
-
-            <SummarySection emoji="🔥" title="Calories burned">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">
-                    Active
-                  </p>
-                  <p className="mt-1 text-2xl font-bold text-white">
-                    {day.activeCalories}
-                    <span className="ml-1 text-sm font-normal text-zinc-500">kcal</span>
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-500">From movement & workouts</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                    Total
-                  </p>
-                  <p className="mt-1 text-2xl font-bold text-white">
-                    {day.totalCalories}
-                    <span className="ml-1 text-sm font-normal text-zinc-500">kcal</span>
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    {day.bmrCalories} resting + {day.activeCalories} active
-                  </p>
-                </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">
+                  Active
+                </p>
+                <p className="mt-1 text-2xl font-bold text-white">
+                  {day.activeCalories}
+                  <span className="ml-1 text-sm font-normal text-zinc-500">kcal</span>
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">From movement & workouts</p>
               </div>
-            </SummarySection>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  Total
+                </p>
+                <p className="mt-1 text-2xl font-bold text-white">
+                  {day.totalCalories}
+                  <span className="ml-1 text-sm font-normal text-zinc-500">kcal</span>
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {day.bmrCalories} resting + {day.activeCalories} active
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="mb-5 grid grid-cols-2 gap-3">
@@ -111,6 +110,7 @@ export function HealthDayView({ selectedDate, onDateChange }: HealthDayViewProps
               value={`${day.restingHr}`}
               unit="bpm"
               accent="text-rose-400"
+              onClick={() => setDetail("hr")}
             />
             <MetricCard
               icon="📊"
@@ -119,41 +119,7 @@ export function HealthDayView({ selectedDate, onDateChange }: HealthDayViewProps
               unit={day.hrv !== null ? "ms" : ""}
               detail={HRV_STATUS_LABELS[day.hrvStatus]}
               accent={hrvAccent}
-            />
-            <MetricCard
-              icon="😰"
-              label="Stress"
-              value={`${day.avgStress}`}
-              unit="avg"
-              detail={`Peak ${day.maxStress}`}
-              accent="text-orange-400"
-            />
-            <MetricCard
-              icon="🔋"
-              label="Body battery"
-              value={`${day.bodyBatteryLow}–${day.bodyBatteryHigh}`}
-              unit=""
-              detail={`+${day.bodyBatteryCharged} / −${day.bodyBatteryDrained}`}
-              accent="text-lime-400"
-            />
-          </div>
-
-          <div className="mb-5 space-y-3">
-            <HealthSparkChart
-              data={day.bodyBatteryCurve}
-              emoji="🔋"
-              label="Body battery"
-              caption={`Low ${day.bodyBatteryLow} · High ${day.bodyBatteryHigh}`}
-              color="#a3e635"
-              fillColor="rgb(163 230 53 / 0.15)"
-            />
-            <HealthSparkChart
-              data={day.stressCurve}
-              emoji="😰"
-              label="Stress"
-              caption={`Avg ${day.avgStress} · Peak ${day.maxStress}`}
-              color="#fb923c"
-              fillColor="rgb(251 146 60 / 0.12)"
+              onClick={() => setDetail("hrv")}
             />
           </div>
 
@@ -164,35 +130,52 @@ export function HealthDayView({ selectedDate, onDateChange }: HealthDayViewProps
             <span className="text-xs text-zinc-500">{day.activities.length} recorded</span>
           </div>
           <HealthActivityList activities={day.activities} />
+
+          {detail && (
+            <HealthDetailModal
+              title={detailTitle(detail)}
+              rows={detailRows(detail, day)}
+              onClose={() => setDetail(null)}
+            />
+          )}
         </>
       )}
     </div>
   );
 }
 
-function SummarySection({
-  emoji,
-  title,
-  detail,
-  children,
-}: {
-  emoji: string;
-  title: string;
-  detail?: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="border-b border-white/10 pb-5 last:border-b-0 last:pb-0">
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-sm font-semibold text-zinc-300">
-          <span>{emoji}</span>
-          {title}
-        </p>
-        {detail && <p className="text-right text-xs text-zinc-500">{detail}</p>}
-      </div>
-      {children}
-    </section>
-  );
+function detailTitle(kind: DetailKind): string {
+  if (kind === "sleep") return "Sleep";
+  if (kind === "hr") return "Resting heart rate";
+  return "HRV";
+}
+
+function detailRows(kind: DetailKind, day: DailyHealth): HealthDetailRow[] {
+  if (kind === "sleep") {
+    return [
+      { label: "Deep", value: formatHoursAsHm(day.deepSleepHours) },
+      { label: "REM", value: formatHoursAsHm(day.remSleepHours) },
+      { label: "Light", value: formatHoursAsHm(day.lightSleepHours) },
+      { label: "Heart rate average", value: `${day.sleepAvgHr} bpm` },
+    ];
+  }
+  if (kind === "hr") {
+    return [
+      { label: "Resting", value: `${day.restingHr} bpm` },
+      { label: "Min", value: `${day.minHr} bpm` },
+      { label: "Max", value: `${day.maxHr} bpm` },
+      { label: "7-day avg resting", value: `${day.avgRestingHr7d} bpm` },
+      { label: "Sleep avg", value: `${day.sleepAvgHr} bpm` },
+    ];
+  }
+  return [
+    { label: "Last night", value: day.hrv !== null ? `${day.hrv} ms` : "—" },
+    { label: "Status", value: HRV_STATUS_LABELS[day.hrvStatus] },
+    {
+      label: "7-day moving average",
+      value: day.hrvWeeklyAvg !== null ? `${day.hrvWeeklyAvg} ms` : "—",
+    },
+  ];
 }
 
 function MetricCard({
@@ -202,16 +185,24 @@ function MetricCard({
   unit,
   detail,
   accent,
+  onClick,
 }: {
   icon: string;
   label: string;
   value: string;
-  unit: string;
+  unit?: string;
   detail?: string;
   accent: string;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-surface-elevated/70 p-4">
+  const className =
+    "rounded-2xl border border-white/10 bg-surface-elevated/70 p-4 text-left transition";
+  const interactive = onClick
+    ? "hover:border-white/20 hover:bg-surface-elevated"
+    : "";
+
+  const body = (
+    <>
       <div className="flex items-center gap-2">
         <span className="text-base">{icon}</span>
         <p className={`text-[10px] font-bold uppercase tracking-wider ${accent}`}>{label}</p>
@@ -221,6 +212,16 @@ function MetricCard({
         {unit && <span className="ml-1 text-sm font-normal text-zinc-500">{unit}</span>}
       </p>
       {detail && <p className={`mt-1 text-xs ${accent}`}>{detail}</p>}
-    </div>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={`${className} ${interactive}`}>
+        {body}
+      </button>
+    );
+  }
+
+  return <div className={className}>{body}</div>;
 }

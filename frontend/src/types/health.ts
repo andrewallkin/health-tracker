@@ -27,21 +27,18 @@ export interface DailyHealth {
   activeCalories: number;
   bmrCalories: number;
   restingHr: number;
+  minHr: number;
+  maxHr: number;
+  avgRestingHr7d: number;
   sleepHours: number;
   deepSleepHours: number;
+  remSleepHours: number;
+  lightSleepHours: number;
+  sleepAvgHr: number;
   sleepScore: number | null;
   hrv: number | null;
   hrvStatus: HrvStatus;
-  avgStress: number;
-  maxStress: number;
-  bodyBatteryHigh: number;
-  bodyBatteryLow: number;
-  bodyBatteryCharged: number;
-  bodyBatteryDrained: number;
-  moderateIntensityMin: number;
-  vigorousIntensityMin: number;
-  stressCurve: number[];
-  bodyBatteryCurve: number[];
+  hrvWeeklyAvg: number | null;
   activities: HealthActivity[];
 }
 
@@ -52,7 +49,6 @@ export interface HealthWeekSummary {
   avgSteps: number;
   avgSleepHours: number;
   avgActiveCalories: number;
-  avgStress: number;
   avgHrv: number | null;
   stepGoalDays: number;
   totalActivities: number;

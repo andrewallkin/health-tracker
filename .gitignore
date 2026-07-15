@@ -214,3 +214,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Agent design specs / plans (local only)
+docs/superpowers/

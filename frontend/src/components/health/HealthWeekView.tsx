@@ -2,11 +2,9 @@ import { aggregateHealthWeek } from "../../lib/healthAggregates";
 import { addWeeks, formatWeekRange, getWeekRange } from "../../lib/dates";
 import { PAGE_SHELL } from "../../lib/layout";
 import { DateNav } from "../layout/DateNav";
-import { TargetProgressBar } from "./TargetProgressBar";
 import { HealthWeekBarChart } from "./HealthWeekBarChart";
 
 const SLEEP_TARGET = 8;
-const STRESS_CEILING = 35;
 
 interface HealthWeekViewProps {
   anchorDate: string;
@@ -22,9 +20,6 @@ export function HealthWeekView({
   const { start, end } = getWeekRange(anchorDate);
   const summary = aggregateHealthWeek(anchorDate);
   const stepGoal = summary.days[0]?.stepGoal ?? 10_000;
-
-  const totalModerate = summary.days.reduce((sum, d) => sum + d.moderateIntensityMin, 0);
-  const totalVigorous = summary.days.reduce((sum, d) => sum + d.vigorousIntensityMin, 0);
 
   return (
     <div className={PAGE_SHELL}>
@@ -43,7 +38,6 @@ export function HealthWeekView({
           value={`${summary.avgActiveCalories} kcal`}
           accent="text-amber-400"
         />
-        <Stat label="😰 Avg stress" value={summary.avgStress} accent="text-orange-400" />
         <Stat
           label="📊 Avg HRV"
           value={summary.avgHrv !== null ? `${summary.avgHrv} ms` : "—"}
@@ -81,33 +75,6 @@ export function HealthWeekView({
         formatBarLabel={(v) => `${v.toFixed(1)}h`}
         onSelectDate={onSelectDate}
       />
-
-      <HealthWeekBarChart
-        title="Stress"
-        emoji="😰"
-        hint={`Target under ${STRESS_CEILING}`}
-        days={summary.days}
-        getValue={(d) => d.avgStress}
-        getTarget={() => STRESS_CEILING}
-        lowerIsBetter
-        maxValue={60}
-        goalLine={STRESS_CEILING}
-        formatBarLabel={(v) => `${v}`}
-        onSelectDate={onSelectDate}
-      />
-
-      <div className="rounded-2xl border border-white/10 bg-white/4 p-5">
-        <p className="mb-4 flex items-center gap-1.5 text-sm font-medium text-zinc-300">
-          <span>💪</span> Intensity minutes
-        </p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <TargetProgressBar label="Moderate" value={totalModerate} target={150} />
-          <TargetProgressBar label="Vigorous" value={totalVigorous} target={75} />
-        </div>
-        <p className="mt-4 text-center text-[10px] text-zinc-600">
-          Weekly totals · bar colour = progress vs WHO guideline
-        </p>
-      </div>
     </div>
   );
 }

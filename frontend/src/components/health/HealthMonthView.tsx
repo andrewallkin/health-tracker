@@ -37,13 +37,6 @@ export function HealthMonthView({
     .filter(([, count]) => count > 0)
     .sort((a, b) => b[1] - a[1]);
 
-  const inMonthDays = summary.days.filter((d) => {
-    const [y, m] = d.date.split("-").map(Number);
-    return y === year && m - 1 === month && !isFutureDate(d.date);
-  });
-  const totalModerate = inMonthDays.reduce((sum, d) => sum + d.moderateIntensityMin, 0);
-  const totalVigorous = inMonthDays.reduce((sum, d) => sum + d.vigorousIntensityMin, 0);
-
   return (
     <div className={PAGE_SHELL}>
       <DateNav
@@ -73,14 +66,6 @@ export function HealthMonthView({
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-lime-400">🏃 Workouts</p>
           <p className="mt-1 text-lg font-bold text-white">{summary.totalActivities}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-sky-400">💪 Moderate min</p>
-          <p className="mt-1 text-lg font-bold text-white">{totalModerate}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-fuchsia-400">💪 Vigorous min</p>
-          <p className="mt-1 text-lg font-bold text-white">{totalVigorous}</p>
         </div>
       </div>
 
