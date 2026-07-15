@@ -86,6 +86,23 @@ describe("aggregateWeek", () => {
     expect(week.daysOnTarget).toBe(1);
     expect(week.averages.calories).toBe(2150);
   });
+
+  it("excludes empty and manually not-tracked days from averages", () => {
+    const dates = getWeekDates("2026-06-24");
+    const byDate = groupEntriesByDate([
+      entry({ logDate: "2026-06-24", calories: 1800 }),
+      entry({ id: "e2", logDate: "2026-06-25", calories: 600 }),
+    ]);
+    const week = aggregateWeek(dates, goal, byDate, new Set(["2026-06-25"]));
+    expect(week.daysLogged).toBe(1);
+    expect(week.averages.calories).toBe(1800);
+    const marked = week.days.find((d) => d.date === "2026-06-25");
+    expect(marked?.notTracked).toBe(true);
+    expect(marked?.countsInAverages).toBe(false);
+    const empty = week.days.find((d) => d.date === "2026-06-26");
+    expect(empty?.notTracked).toBe(true);
+    expect(empty?.countsInAverages).toBe(false);
+  });
 });
 
 describe("aggregateMonth", () => {
@@ -98,6 +115,17 @@ describe("aggregateMonth", () => {
     const month = aggregateMonth(2026, 5, goal, byDate);
     expect(month.totals.calories).toBe(1100);
     expect(month.daysLogged).toBe(2);
+  });
+
+  it("excludes manually not-tracked days from month totals", () => {
+    const byDate = groupEntriesByDate([
+      entry({ logDate: "2026-06-01", calories: 500 }),
+      entry({ id: "e2", logDate: "2026-06-15", calories: 600 }),
+    ]);
+    const month = aggregateMonth(2026, 5, goal, byDate, new Set(["2026-06-15"]));
+    expect(month.totals.calories).toBe(500);
+    expect(month.daysLogged).toBe(1);
+    expect(month.averages.calories).toBe(500);
   });
 });
 

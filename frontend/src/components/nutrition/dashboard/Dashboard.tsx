@@ -1,3 +1,4 @@
+import { useConfirm } from "../../../context/useConfirm";
 import { getDailySummary } from "../../../lib/aggregates";
 import { addDays, formatDayHeader, isToday, toDateKey } from "../../../lib/dates";
 import { PAGE_SHELL } from "../../../lib/layout";
@@ -13,11 +14,14 @@ interface DashboardProps {
   selectedDate: string;
   entries: LogEntry[];
   goal: DailyGoal;
+  isNotTracked: boolean;
   deleteError?: string | null;
   onDismissDeleteError?: () => void;
   onDateChange: (dateKey: string) => void;
   onDeleteEntry: (id: string) => void;
   onEditEntry: (id: string) => void;
+  onMarkNotTracked: () => Promise<void>;
+  onUnmarkNotTracked: () => Promise<void>;
   onAddFood?: () => void;
   onOpenLibrary?: () => void;
 }
@@ -26,16 +30,42 @@ export function Dashboard({
   selectedDate,
   entries,
   goal,
+  isNotTracked,
   deleteError,
   onDismissDeleteError,
   onDateChange,
   onDeleteEntry,
   onEditEntry,
+  onMarkNotTracked,
+  onUnmarkNotTracked,
   onAddFood,
   onOpenLibrary,
 }: DashboardProps) {
+  const confirm = useConfirm();
   const summary = getDailySummary(entries, goal);
   const title = isToday(selectedDate) ? "Today" : formatDayHeader(selectedDate);
+  const future = isFutureDate(selectedDate);
+
+  const handleToggleTracked = async () => {
+    if (isNotTracked) {
+      const ok = await confirm({
+        title: "Include this day?",
+        message: "This day will count toward week and month averages again.",
+        confirmLabel: "Include day",
+      });
+      if (!ok) return;
+      await onUnmarkNotTracked();
+      return;
+    }
+
+    const ok = await confirm({
+      title: "Exclude this day?",
+      message: "This day will be left out of week and month averages. Logged food stays visible.",
+      confirmLabel: "Exclude day",
+    });
+    if (!ok) return;
+    await onMarkNotTracked();
+  };
 
   return (
     <div className={PAGE_SHELL}>
@@ -50,7 +80,23 @@ export function Dashboard({
       />
 
       <div className="mb-5 rounded-2xl border border-white/10 bg-surface-elevated/80 p-5 backdrop-blur-sm">
+        {isNotTracked && (
+          <p className="mb-3 text-center text-xs font-medium text-zinc-500">
+            Excluded from week &amp; month averages
+          </p>
+        )}
         <CalorieRing consumed={summary.consumed.calories} goal={summary.goal.calories} />
+        {!future && (
+          <div className="mt-4 flex justify-center border-t border-white/8 pt-3">
+            <button
+              type="button"
+              onClick={() => void handleToggleTracked()}
+              className="text-xs font-medium text-zinc-500 underline-offset-2 transition hover:text-zinc-300 hover:underline"
+            >
+              {isNotTracked ? "Include in averages" : "Exclude from averages"}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="mb-5">

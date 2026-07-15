@@ -4,11 +4,30 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..crypto import decrypt_api_key, mask_api_key
-from ..db_models import AppSettingsRow, CheckInRow, DailyGoalRow, LogEntryRow, SavedFoodRow, SavedMealItemRow, SavedMealRow
+from ..db_models import (
+    AppSettingsRow,
+    CheckInRow,
+    DailyGoalRow,
+    DayStatusRow,
+    LogEntryRow,
+    SavedFoodRow,
+    SavedMealItemRow,
+    SavedMealRow,
+)
 from ..gcs import GCSService
 from .compose import MacroTotals, food_to_macros, scale_macros
 from .photo_storage import resolve_image_url_for_response
-from .schemas import AiSettings, CheckIn, CheckInPhoto, DailyGoal, LogEntry, SavedFood, SavedMeal, SavedMealItem
+from .schemas import (
+    AiSettings,
+    CheckIn,
+    CheckInPhoto,
+    DailyGoal,
+    DayStatus,
+    LogEntry,
+    SavedFood,
+    SavedMeal,
+    SavedMealItem,
+)
 
 DEFAULT_DAILY_GOAL = {"calories": 2200, "protein": 180, "carbs": 220, "fat": 70}
 
@@ -173,3 +192,7 @@ def check_in_to_schema(row: CheckInRow, gcs: GCSService) -> CheckIn:
             for photo in row.photos
         ],
     )
+
+
+def day_status_to_schema(row: DayStatusRow) -> DayStatus:
+    return DayStatus(id=row.id, statusDate=row.status_date)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from ..db_models import CheckInRow, LogEntryRow, SavedFoodRow, SavedMealRow
+from ..db_models import CheckInRow, DayStatusRow, LogEntryRow, SavedFoodRow, SavedMealRow
 
 
 def get_owned_food(db: Session, user_id: str, food_id: str) -> SavedFoodRow | None:
@@ -41,5 +41,21 @@ def get_check_in_for_date(db: Session, user_id: str, check_in_date: str) -> Chec
     return (
         db.query(CheckInRow)
         .filter(CheckInRow.user_id == user_id, CheckInRow.check_in_date == check_in_date)
+        .first()
+    )
+
+
+def get_owned_day_status(db: Session, user_id: str, day_status_id: str) -> DayStatusRow | None:
+    return (
+        db.query(DayStatusRow)
+        .filter(DayStatusRow.id == day_status_id, DayStatusRow.user_id == user_id)
+        .first()
+    )
+
+
+def get_day_status_for_date(db: Session, user_id: str, status_date: str) -> DayStatusRow | None:
+    return (
+        db.query(DayStatusRow)
+        .filter(DayStatusRow.user_id == user_id, DayStatusRow.status_date == status_date)
         .first()
     )

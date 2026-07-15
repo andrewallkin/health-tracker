@@ -1,6 +1,6 @@
 import type { DescribeFoodInput, FoodEstimate } from "../types/foodEstimate";
 import type { CheckIn, CheckInUpsertPayload } from "../types/health";
-import type { DailyGoal, LogEntry, SavedFood, SavedMeal } from "../types/nutrition";
+import type { DailyGoal, DayStatus, LogEntry, SavedFood, SavedMeal } from "../types/nutrition";
 import type { NewSavedFoodPayload } from "./savedFood";
 import type { NewSavedMealPayload } from "./savedMeal";
 import { API_BASE, ApiError, apiFetch, parseErrorMessage, request } from "./client";
@@ -214,6 +214,27 @@ export async function upsertCheckIn(payload: CheckInUpsertPayload): Promise<Chec
 
 export async function deleteCheckIn(id: string): Promise<void> {
   await request<void>(`/check-ins/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function fetchDayStatusForDate(dateKey: string): Promise<DayStatus | null> {
+  return request<DayStatus | null>(`/day-statuses?date=${encodeURIComponent(dateKey)}`);
+}
+
+export async function fetchDayStatusesInRange(from: string, to: string): Promise<DayStatus[]> {
+  const params = new URLSearchParams({ from, to });
+  return request<DayStatus[]>(`/day-statuses?${params}`);
+}
+
+export async function markDayNotTracked(statusDate: string): Promise<DayStatus> {
+  return request<DayStatus>("/day-statuses", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ statusDate }),
+  });
+}
+
+export async function unmarkDayNotTracked(id: string): Promise<void> {
+  await request<void>(`/day-statuses/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export async function fetchEntriesForDate(dateKey: string): Promise<LogEntry[]> {

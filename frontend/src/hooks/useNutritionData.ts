@@ -7,11 +7,14 @@ import {
   deleteLogEntry,
   deleteSavedMeal,
   fetchAiSettings,
+  fetchDayStatusForDate,
   fetchEntriesForDate,
   fetchGoals,
   fetchSavedFoods,
   fetchSavedMeals,
+  markDayNotTracked,
   tryDeleteSavedFood,
+  unmarkDayNotTracked,
   updateAiSettings,
   updateGoals,
   updateLogEntry,
@@ -34,11 +37,12 @@ import {
 } from "../lib/savedFood";
 import { findSavedMeal, type NewSavedMealPayload } from "../lib/savedMeal";
 import type { SettingsSavePayload } from "../components/nutrition/pages/GoalsSettingsPage";
-import type { DailyGoal, LogEntry, SavedFood, SavedMeal } from "../types/nutrition";
+import type { DailyGoal, DayStatus, LogEntry, SavedFood, SavedMeal } from "../types/nutrition";
 
 export function useNutritionData(selectedDate: string) {
   const confirm = useConfirm();
   const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [dayStatus, setDayStatus] = useState<DayStatus | null>(null);
   const [entriesReloadKey, setEntriesReloadKey] = useState(0);
   const [goal, setGoal] = useState<DailyGoal | null>(null);
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
@@ -98,9 +102,12 @@ export function useNutritionData(selectedDate: string) {
 
   useEffect(() => {
     let cancelled = false;
-    fetchEntriesForDate(selectedDate)
-      .then((loaded) => {
-        if (!cancelled) setEntries(loaded);
+    Promise.all([fetchEntriesForDate(selectedDate), fetchDayStatusForDate(selectedDate)])
+      .then(([loaded, status]) => {
+        if (!cancelled) {
+          setEntries(loaded);
+          setDayStatus(status);
+        }
       })
       .catch((err) => {
         if (!cancelled) {
@@ -111,6 +118,19 @@ export function useNutritionData(selectedDate: string) {
       cancelled = true;
     };
   }, [selectedDate, entriesReloadKey]);
+
+  const markSelectedDayNotTracked = async () => {
+    const status = await markDayNotTracked(selectedDate);
+    setDayStatus(status);
+    reloadEntries();
+  };
+
+  const unmarkSelectedDayNotTracked = async () => {
+    if (!dayStatus) return;
+    await unmarkDayNotTracked(dayStatus.id);
+    setDayStatus(null);
+    reloadEntries();
+  };
 
   const addSavedMealEntry = async (payload: LogMealPayload, mealId: string) => {
     const meal = findSavedMeal(savedMeals, mealId);
@@ -306,6 +326,8 @@ export function useNutritionData(selectedDate: string) {
 
   return {
     entries,
+    dayStatus,
+    isNotTracked: dayStatus !== null,
     entriesReloadKey,
     goal,
     savedMeals,
@@ -318,6 +340,8 @@ export function useNutritionData(selectedDate: string) {
     setHasApiKey,
     reloadEntries,
     retryBootstrap,
+    markSelectedDayNotTracked,
+    unmarkSelectedDayNotTracked,
     addSavedMealEntry,
     updateSavedMealEntry,
     addQuickLogEntry,
