@@ -25,10 +25,28 @@ export const ACTIVITY_TYPE_EMOJI: Record<ActivityType, string> = {
 
 export const HRV_STATUS_LABELS: Record<HrvStatus, string> = {
   balanced: "Balanced",
+  unbalanced: "Unbalanced",
   low: "Low",
-  high: "High",
+  poor: "Poor",
   unavailable: "No data",
 };
+
+export const HRV_STATUS_EMOJI: Record<HrvStatus, string> = {
+  balanced: "✅",
+  unbalanced: "⚠️",
+  low: "⬇️",
+  poor: "❌",
+  unavailable: "❔",
+};
+
+/** Tailwind text accent class for HRV status. */
+export function hrvStatusAccent(status: HrvStatus): string {
+  if (status === "balanced") return "text-emerald-400";
+  if (status === "unbalanced") return "text-amber-400";
+  if (status === "low") return "text-orange-400";
+  if (status === "poor") return "text-rose-400";
+  return "text-zinc-400";
+}
 
 const FIXTURES: Record<string, DailyHealth> = {
   "2026-07-13": {
@@ -91,7 +109,7 @@ const FIXTURES: Record<string, DailyHealth> = {
     sleepAvgHr: 52,
     sleepScore: 58,
     hrv: 92,
-    hrvStatus: "balanced",
+    hrvStatus: "unbalanced",
     hrvWeeklyAvg: 92,
     activities: [
       {
@@ -132,8 +150,8 @@ const FIXTURES: Record<string, DailyHealth> = {
     lightSleepHours: 4.5,
     sleepAvgHr: 53,
     sleepScore: 82,
-    hrv: 95,
-    hrvStatus: "balanced",
+    hrv: 68,
+    hrvStatus: "low",
     hrvWeeklyAvg: 91,
     activities: [
       {
@@ -144,6 +162,39 @@ const FIXTURES: Record<string, DailyHealth> = {
         durationMin: 66,
         calories: 510,
         avgHr: 124,
+      },
+    ],
+  },
+  "2026-07-16": {
+    date: "2026-07-16",
+    steps: 4200,
+    stepGoal: 7000,
+    totalCalories: 2150,
+    activeCalories: 420,
+    bmrCalories: 1730,
+    restingHr: 54,
+    minHr: 49,
+    maxHr: 138,
+    avgRestingHr7d: 49,
+    sleepHours: 5.8,
+    deepSleepHours: 0.8,
+    remSleepHours: 0.9,
+    lightSleepHours: 4.1,
+    sleepAvgHr: 58,
+    sleepScore: 49,
+    hrv: 52,
+    hrvStatus: "poor",
+    hrvWeeklyAvg: 88,
+    activities: [
+      {
+        id: "2026-07-16-0",
+        name: "Evening walk",
+        type: "walking",
+        startTime: "18:10",
+        durationMin: 35,
+        calories: 145,
+        avgHr: 98,
+        distanceKm: 3.1,
       },
     ],
   },

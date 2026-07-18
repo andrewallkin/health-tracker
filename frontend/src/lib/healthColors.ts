@@ -49,6 +49,14 @@ export function bandFromRatio(actual: number, target: number): TargetBand {
   return "great";
 }
 
+/** Sleep score 0–100 bands (green from 80 up). */
+export function bandFromSleepScore(score: number): TargetBand {
+  if (score < 60) return "poor";
+  if (score < 70) return "fair";
+  if (score < 80) return "good";
+  return "great";
+}
+
 /** Lower value vs ceiling is better (e.g. stress). */
 export function bandFromCeiling(value: number, ceiling: number): TargetBand {
   if (ceiling <= 0) return "great";

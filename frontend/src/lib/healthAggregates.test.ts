@@ -13,7 +13,7 @@ describe("stepHeatLevel", () => {
 });
 
 describe("getMockHealthDay / getHealthDay", () => {
-  it("returns fixture data for the three demo days", () => {
+  it("returns fixture data for the demo days", () => {
     const day = getMockHealthDay("2026-07-13");
     expect(day).not.toBeNull();
     expect(day!.sleepHours).toBeGreaterThan(0);
@@ -26,9 +26,16 @@ describe("getMockHealthDay / getHealthDay", () => {
     expect(day!.activities.length).toBeGreaterThan(0);
   });
 
+  it("covers each Garmin HRV status across fixtures", () => {
+    expect(getMockHealthDay("2026-07-13")!.hrvStatus).toBe("balanced");
+    expect(getMockHealthDay("2026-07-14")!.hrvStatus).toBe("unbalanced");
+    expect(getMockHealthDay("2026-07-15")!.hrvStatus).toBe("low");
+    expect(getMockHealthDay("2026-07-16")!.hrvStatus).toBe("poor");
+  });
+
   it("returns null for dates outside the fixture set", () => {
     expect(getMockHealthDay("2026-07-12")).toBeNull();
-    expect(getHealthDay("2026-07-16")).toBeNull();
+    expect(getHealthDay("2026-07-17")).toBeNull();
   });
 
   it("sorts activities ascending by start time in fixtures", () => {

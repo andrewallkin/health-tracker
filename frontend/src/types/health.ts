@@ -1,4 +1,4 @@
-export type HrvStatus = "balanced" | "low" | "high" | "unavailable";
+export type HrvStatus = "balanced" | "unbalanced" | "low" | "poor" | "unavailable";
 
 export type ActivityType =
   | "strength_training"
