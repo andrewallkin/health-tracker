@@ -48,7 +48,11 @@ export interface HealthWeekSummary {
   days: DailyHealth[];
   avgSteps: number;
   avgSleepHours: number;
+  avgSleepScore: number | null;
+  avgTotalCalories: number;
+  avgBmrCalories: number;
   avgActiveCalories: number;
+  avgRestingHr: number | null;
   avgHrv: number | null;
   stepGoalDays: number;
   totalActivities: number;
