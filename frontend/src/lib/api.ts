@@ -313,11 +313,10 @@ export async function fetchModelOptions(): Promise<ModelOption[]> {
 }
 
 export async function estimateFood(input: DescribeFoodInput): Promise<FoodEstimate> {
-  const photos = input.photoUrl ? [input.photoUrl] : [];
   return request<FoodEstimate>("/estimate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ note: input.note || null, photos }),
+    body: JSON.stringify({ note: input.note || null, photos: input.photoUrls }),
   });
 }
 

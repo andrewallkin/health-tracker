@@ -537,3 +537,23 @@ def test_ai_settings_and_estimate_without_key(client, auth_headers):
     )
     assert clear_response.status_code == 200
     assert clear_response.json()["hasApiKey"] is False
+
+
+def test_estimate_rejects_more_than_five_photos(client, auth_headers):
+    client.put(
+        "/api/settings/ai",
+        headers=auth_headers,
+        json={
+            "apiKey": "sk-test-key-1234567890",
+            "textModel": "gpt-5-nano",
+            "imageModel": "gpt-5-mini",
+        },
+    )
+    photos = [f"/api/photos/user/p{i}.jpg" for i in range(6)]
+    response = client.post(
+        "/api/estimate",
+        headers=auth_headers,
+        json={"note": "lunch", "photos": photos},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "At most 5 photos allowed"

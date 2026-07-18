@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { selectedEstimateImageUrl } from "../../../lib/foodEstimate";
 import { addToDayLabel, confirmLogLabel } from "../../../lib/logLabels";
 import { parseNonNegative, parsePositive } from "../../../lib/numericInput";
 import { defaultMealSlot } from "../../../lib/quickLog";
@@ -53,6 +54,8 @@ export function EstimateReviewPage({
   const [foodTags, setFoodTags] = useState<FoodTag[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+  const selectedImageUrl = selectedEstimateImageUrl(input.photoUrls, selectedPhotoIndex);
 
   const payload: ReviewedFoodPayload = {
     name,
@@ -62,7 +65,7 @@ export function EstimateReviewPage({
     carbs: parseNonNegative(carbs),
     fat: parseNonNegative(fat),
     description: input.note.trim() || undefined,
-    imageUrl: input.photoUrl,
+    imageUrl: selectedImageUrl,
   };
 
   const isValid = name.trim().length > 0 && payload.calories > 0;
@@ -112,7 +115,31 @@ export function EstimateReviewPage({
           </p>
         )}
 
-        {input.photoUrl && <MealPhotoView src={input.photoUrl} alt="Meal" />}
+        {input.photoUrls.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-sm font-medium text-zinc-400">Photo for this entry</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {input.photoUrls.map((url, index) => {
+                const selected = index === selectedPhotoIndex;
+                return (
+                  <button
+                    key={`${url}-${index}`}
+                    type="button"
+                    onClick={() => setSelectedPhotoIndex(index)}
+                    className={`relative overflow-hidden rounded-2xl border text-left transition ${
+                      selected
+                        ? "border-amber-400 ring-2 ring-amber-400/60"
+                        : "border-white/10 hover:border-white/20"
+                    }`}
+                    aria-pressed={selected}
+                  >
+                    <MealPhotoView src={url} alt={`Estimate photo ${index + 1}`} />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {isValid && (
           <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
