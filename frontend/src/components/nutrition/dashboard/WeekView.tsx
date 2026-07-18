@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useHealthWeek } from "../../../hooks/useHealthData";
 import { aggregateWeek, calorieHeatLevel, groupEntriesByDate } from "../../../lib/aggregates";
 import { fetchDayStatusesInRange, fetchEntriesInRange } from "../../../lib/api";
 import {
@@ -8,10 +9,12 @@ import {
   isToday,
   weekdayShort,
 } from "../../../lib/dates";
+import { rangeEnergyBalance } from "../../../lib/energyBalance";
 import { PAGE_SHELL } from "../../../lib/layout";
 import { isFutureDate } from "../../../lib/logLabels";
 import type { DailyGoal, LogEntry } from "../../../types/nutrition";
 import { DateNav } from "../../layout/DateNav";
+import { EnergyBalanceCard } from "./EnergyBalanceCard";
 
 interface WeekViewProps {
   anchorDate: string;
@@ -55,6 +58,23 @@ export function WeekView({
     () => aggregateWeek(dates, goal, entriesByDate, notTrackedDates),
     [dates, goal, entriesByDate, notTrackedDates],
   );
+  const health = useHealthWeek(anchorDate, true);
+  const burnByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const d of health.days) {
+      map.set(d.date, d.totalCalories);
+    }
+    return map;
+  }, [health.days]);
+  const balance = useMemo(
+    () =>
+      rangeEnergyBalance(summary.days, burnByDate, {
+        loading: health.loading,
+        garminDisconnected: health.garminDisconnected,
+        loadError: health.loadError,
+      }),
+    [summary.days, burnByDate, health.loading, health.garminDisconnected, health.loadError],
+  );
   const maxCalories = Math.max(
     goal.calories,
     ...summary.days.filter((d) => d.countsInAverages).map((d) => d.consumed.calories),
@@ -80,6 +100,8 @@ export function WeekView({
         <Stat label="Avg C" value={`${summary.averages.carbs}g`} accent="text-carbs" />
         <Stat label="Avg F" value={`${summary.averages.fat}g`} accent="text-fat" />
       </div>
+
+      <EnergyBalanceCard balance={balance} mode="average" />
 
       <div className="mb-4 rounded-2xl border border-white/10 bg-white/4 p-5">
         <div className="mb-4 flex items-end justify-between">
