@@ -1,12 +1,12 @@
 import { aggregateHealthWeek } from "../../lib/healthAggregates";
+import { formatHoursAsHm, formatMinutesAsHm } from "../../lib/formatDuration";
+import { bandFromRatio, bandFromSleepScore, BAND_STYLES } from "../../lib/healthColors";
+import { useHealthWeek } from "../../hooks/useHealthData";
 import { addWeeks, formatWeekRange, getWeekRange } from "../../lib/dates";
 import { PAGE_SHELL } from "../../lib/layout";
 import { DateNav } from "../layout/DateNav";
-import { TargetProgressBar } from "./TargetProgressBar";
 import { HealthWeekBarChart } from "./HealthWeekBarChart";
-
-const SLEEP_TARGET = 8;
-const STRESS_CEILING = 35;
+import { ProgressRing } from "./ProgressRing";
 
 interface HealthWeekViewProps {
   anchorDate: string;
@@ -20,11 +20,14 @@ export function HealthWeekView({
   onSelectDate,
 }: HealthWeekViewProps) {
   const { start, end } = getWeekRange(anchorDate);
-  const summary = aggregateHealthWeek(anchorDate);
-  const stepGoal = summary.days[0]?.stepGoal ?? 10_000;
-
-  const totalModerate = summary.days.reduce((sum, d) => sum + d.moderateIntensityMin, 0);
-  const totalVigorous = summary.days.reduce((sum, d) => sum + d.vigorousIntensityMin, 0);
+  const { days, errors, loading, loadError, garminDisconnected } = useHealthWeek(anchorDate, true);
+  const summary = aggregateHealthWeek(anchorDate, days);
+  const stepGoal = summary.days.find((d) => d.steps > 0)?.stepGoal ?? 7000;
+  const caloriesParts = Math.max(summary.avgBmrCalories + summary.avgActiveCalories, 1);
+  const restingPct = (summary.avgBmrCalories / caloriesParts) * 100;
+  const activePct = (summary.avgActiveCalories / caloriesParts) * 100;
+  const maxTotalCalories = Math.max(...summary.days.map((d) => d.totalCalories), 1);
+  const maxSleepHours = Math.max(...summary.days.map((d) => d.sleepHours), 1);
 
   return (
     <div className={PAGE_SHELL}>
@@ -35,24 +38,116 @@ export function HealthWeekView({
         onNext={() => onAnchorChange(addWeeks(anchorDate, 1))}
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 rounded-2xl border border-white/10 bg-surface-elevated/80 p-4">
-        <Stat label="👟 Avg steps" value={summary.avgSteps.toLocaleString()} accent="text-sky-400" />
-        <Stat label="😴 Avg sleep" value={`${summary.avgSleepHours}h`} accent="text-indigo-400" />
-        <Stat
-          label="🔥 Avg active"
-          value={`${summary.avgActiveCalories} kcal`}
-          accent="text-amber-400"
+      {errors.length > 0 && (
+        <p className="mb-3 text-xs text-amber-400/90">
+          {errors.map((entry) => entry.message).join(" · ")}
+        </p>
+      )}
+
+      {loading ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">Loading health…</p>
+        </div>
+      ) : garminDisconnected ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">Connect Garmin in Settings</p>
+        </div>
+      ) : loadError ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">{loadError}</p>
+        </div>
+      ) : (
+        <>
+      <div className="mb-3 grid grid-cols-2 gap-3">
+        <StepsAvgCard
+          steps={summary.avgSteps}
+          stepGoal={stepGoal}
+          daysAtGoal={summary.stepGoalDays}
         />
-        <Stat label="😰 Avg stress" value={summary.avgStress} accent="text-orange-400" />
-        <Stat
-          label="📊 Avg HRV"
-          value={summary.avgHrv !== null ? `${summary.avgHrv} ms` : "—"}
+        <SleepAvgCard sleepHours={summary.avgSleepHours} sleepScore={summary.avgSleepScore} />
+      </div>
+
+      <div className="mb-3 rounded-2xl border border-white/10 bg-surface-elevated/70 p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-base">🔥</span>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-400">
+            Avg calories burned
+          </p>
+        </div>
+        <p className="mt-3 text-3xl font-bold tracking-tight text-white">
+          {summary.avgTotalCalories > 0 ? summary.avgTotalCalories.toLocaleString() : "—"}
+          {summary.avgTotalCalories > 0 && (
+            <span className="ml-1.5 text-base font-normal text-zinc-500">kcal</span>
+          )}
+        </p>
+        <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-white/10">
+          <div
+            className="h-full bg-blue-500 transition-all duration-500"
+            style={{ width: `${restingPct}%` }}
+            title="Resting"
+          />
+          <div
+            className="h-full bg-rose-500 transition-all duration-500"
+            style={{ width: `${activePct}%` }}
+            title="Active"
+          />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-blue-500" />
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-400">
+                Resting
+              </p>
+            </div>
+            <p className="mt-1 text-lg font-bold text-white">
+              {summary.avgBmrCalories > 0 ? summary.avgBmrCalories.toLocaleString() : "—"}
+              {summary.avgBmrCalories > 0 && (
+                <span className="ml-1 text-xs font-normal text-zinc-500">kcal</span>
+              )}
+            </p>
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-rose-500" />
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-400">
+                Active
+              </p>
+            </div>
+            <p className="mt-1 text-lg font-bold text-white">
+              {summary.avgActiveCalories > 0 ? summary.avgActiveCalories.toLocaleString() : "—"}
+              {summary.avgActiveCalories > 0 && (
+                <span className="ml-1 text-xs font-normal text-zinc-500">kcal</span>
+              )}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-5 grid grid-cols-3 gap-3 rounded-2xl border border-white/10 bg-surface-elevated/70 p-4">
+        <MiniStat
+          emoji="💓"
+          label="Avg resting HR"
+          value={summary.avgRestingHr !== null ? String(summary.avgRestingHr) : "—"}
+          unit={summary.avgRestingHr !== null ? "bpm" : undefined}
+          accent="text-rose-400"
+        />
+        <MiniStat
+          emoji="📊"
+          label="Avg HRV"
+          value={summary.avgHrv !== null ? String(summary.avgHrv) : "—"}
+          unit={summary.avgHrv !== null ? "ms" : undefined}
           accent="text-emerald-400"
         />
-        <Stat
-          label="🏃 Workouts"
-          value={`${summary.totalActivities} · ${summary.totalWorkoutMin}m`}
-          accent="text-lime-400"
+        <MiniStat
+          emoji="🏃"
+          label="Workouts"
+          value={
+            summary.totalActivities > 0
+              ? `${summary.totalActivities} · ${formatMinutesAsHm(summary.totalWorkoutMin)}`
+              : "—"
+          }
+          accent="text-zinc-300"
         />
       </div>
 
@@ -72,59 +167,135 @@ export function HealthWeekView({
       <HealthWeekBarChart
         title="Sleep"
         emoji="😴"
-        hint={`Goal ${SLEEP_TARGET}h`}
         days={summary.days}
         getValue={(d) => d.sleepHours}
-        getTarget={() => SLEEP_TARGET}
-        maxValue={9}
-        goalLine={SLEEP_TARGET}
-        formatBarLabel={(v) => `${v.toFixed(1)}h`}
+        sleepDurationWithScorePip
+        maxValue={Math.max(maxSleepHours * 1.1, 1)}
+        formatBarLabel={(v) => formatHoursAsHm(v)}
         onSelectDate={onSelectDate}
       />
 
       <HealthWeekBarChart
-        title="Stress"
-        emoji="😰"
-        hint={`Target under ${STRESS_CEILING}`}
+        title="Calories"
+        emoji="🔥"
+        hint="Resting + active"
         days={summary.days}
-        getValue={(d) => d.avgStress}
-        getTarget={() => STRESS_CEILING}
-        lowerIsBetter
-        maxValue={60}
-        goalLine={STRESS_CEILING}
-        formatBarLabel={(v) => `${v}`}
+        getValue={(d) => d.totalCalories}
+        stackedCalories
+        maxValue={maxTotalCalories * 1.05}
+        formatBarLabel={(v) => `${Math.round(v / 100) / 10}k`}
         onSelectDate={onSelectDate}
       />
+        </>
+      )}
+    </div>
+  );
+}
 
-      <div className="rounded-2xl border border-white/10 bg-white/4 p-5">
-        <p className="mb-4 flex items-center gap-1.5 text-sm font-medium text-zinc-300">
-          <span>💪</span> Intensity minutes
-        </p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <TargetProgressBar label="Moderate" value={totalModerate} target={150} />
-          <TargetProgressBar label="Vigorous" value={totalVigorous} target={75} />
-        </div>
-        <p className="mt-4 text-center text-[10px] text-zinc-600">
-          Weekly totals · bar colour = progress vs WHO guideline
+function StepsAvgCard({
+  steps,
+  stepGoal,
+  daysAtGoal,
+}: {
+  steps: number;
+  stepGoal: number;
+  daysAtGoal: number;
+}) {
+  const band = BAND_STYLES[bandFromRatio(steps, stepGoal)];
+  const progress = stepGoal > 0 ? Math.min(steps / stepGoal, 1) : 0;
+
+  return (
+    <div className="flex h-full flex-col rounded-2xl border border-white/10 bg-surface-elevated/70 p-4">
+      <div className="flex items-center justify-start gap-2 self-start">
+        <span className="text-base">👟</span>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-sky-400">Steps</p>
+      </div>
+      <div className="mt-3 flex flex-1 flex-col items-center justify-center">
+        {steps > 0 ? (
+          <ProgressRing progress={progress} stroke={band.stroke} size={96} strokeWidth={8}>
+            <p className="text-center text-lg font-bold leading-tight text-white">
+              {steps.toLocaleString()}
+            </p>
+          </ProgressRing>
+        ) : (
+          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white/5">
+            <span className="text-zinc-500">—</span>
+          </div>
+        )}
+        <p className="mt-2 text-xs text-zinc-500">
+          {daysAtGoal > 0
+            ? `${daysAtGoal} day${daysAtGoal === 1 ? "" : "s"} at goal`
+            : `Goal ${stepGoal.toLocaleString()}`}
         </p>
       </div>
     </div>
   );
 }
 
-function Stat({
+function SleepAvgCard({
+  sleepHours,
+  sleepScore,
+}: {
+  sleepHours: number;
+  sleepScore: number | null;
+}) {
+  const scoreProgress = sleepScore !== null ? Math.min(sleepScore / 100, 1) : 0;
+  const scoreStroke =
+    sleepScore !== null ? BAND_STYLES[bandFromSleepScore(sleepScore)].stroke : "#818cf8";
+
+  return (
+    <div className="flex h-full flex-col rounded-2xl border border-white/10 bg-surface-elevated/70 p-4">
+      <div className="flex items-center justify-start gap-2 self-start">
+        <span className="text-base">😴</span>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Sleep</p>
+      </div>
+
+      <div className="mt-2 flex flex-1 flex-col items-center justify-center">
+        {sleepScore !== null ? (
+          <ProgressRing progress={scoreProgress} stroke={scoreStroke} size={96} strokeWidth={8}>
+            <div className="text-center">
+              <p className="text-2xl font-bold leading-none text-white">{sleepScore}</p>
+              <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-300/80">
+                Score
+              </p>
+            </div>
+          </ProgressRing>
+        ) : (
+          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white/5">
+            <span className="text-zinc-500">—</span>
+          </div>
+        )}
+        <p className="mt-3 text-2xl font-bold tracking-tight text-white">
+          {sleepHours > 0 ? formatHoursAsHm(sleepHours) : "—"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({
+  emoji,
   label,
   value,
+  unit,
   accent,
 }: {
+  emoji: string;
   label: string;
-  value: string | number;
+  value: string;
+  unit?: string;
   accent: string;
 }) {
   return (
     <div>
-      <p className={`text-[10px] font-bold uppercase tracking-wider ${accent}`}>{label}</p>
-      <p className="mt-1 text-lg font-bold text-white">{value}</p>
+      <div className="flex items-center gap-1.5">
+        <span className="text-sm">{emoji}</span>
+        <p className={`text-[10px] font-bold uppercase tracking-wider ${accent}`}>{label}</p>
+      </div>
+      <p className="mt-1 text-lg font-bold text-white">
+        {value}
+        {unit && <span className="ml-1 text-xs font-normal text-zinc-500">{unit}</span>}
+      </p>
     </div>
   );
 }

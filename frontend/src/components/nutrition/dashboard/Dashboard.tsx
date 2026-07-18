@@ -1,11 +1,14 @@
 import { useConfirm } from "../../../context/useConfirm";
+import { useHealthDay } from "../../../hooks/useHealthData";
 import { getDailySummary } from "../../../lib/aggregates";
 import { addDays, formatDayHeader, isToday, toDateKey } from "../../../lib/dates";
+import { dayEnergyBalance } from "../../../lib/energyBalance";
 import { PAGE_SHELL } from "../../../lib/layout";
 import { isFutureDate } from "../../../lib/logLabels";
 import type { DailyGoal, LogEntry } from "../../../types/nutrition";
 import { CalorieRing } from "./CalorieRing";
 import { DateNav } from "../../layout/DateNav";
+import { EnergyBalanceCard } from "./EnergyBalanceCard";
 import { MacroBars } from "./MacroBars";
 import { MealList } from "./MealList";
 import { RemainingBudget } from "./RemainingBudget";
@@ -43,6 +46,12 @@ export function Dashboard({
 }: DashboardProps) {
   const confirm = useConfirm();
   const summary = getDailySummary(entries, goal);
+  const health = useHealthDay(selectedDate, true);
+  const balance = dayEnergyBalance(summary.consumed.calories, health.day?.totalCalories, {
+    loading: health.loading,
+    garminDisconnected: health.garminDisconnected,
+    loadError: health.loadError,
+  });
   const title = isToday(selectedDate) ? "Today" : formatDayHeader(selectedDate);
   const future = isFutureDate(selectedDate);
 
@@ -98,6 +107,8 @@ export function Dashboard({
           </div>
         )}
       </div>
+
+      <EnergyBalanceCard balance={balance} mode="day" />
 
       <div className="mb-5">
         <RemainingBudget remaining={summary.remaining} />

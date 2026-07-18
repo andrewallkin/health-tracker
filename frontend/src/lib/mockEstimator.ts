@@ -6,7 +6,7 @@ export async function mockEstimateFood(input: DescribeFoodInput): Promise<FoodEs
   await delay(ESTIMATE_DELAY_MS);
 
   const note = input.note.trim().toLowerCase();
-  const hasPhoto = Boolean(input.photoUrl);
+  const hasPhoto = input.photoUrls.length > 0;
 
   if (note.includes("label") || note.includes("kj") || note.includes("per serving")) {
     return {

@@ -1,4 +1,4 @@
-export type HrvStatus = "balanced" | "low" | "high" | "unavailable";
+export type HrvStatus = "balanced" | "unbalanced" | "low" | "poor" | "unavailable";
 
 export type ActivityType =
   | "strength_training"
@@ -6,6 +6,7 @@ export type ActivityType =
   | "cycling"
   | "walking"
   | "hiking"
+  | "cardio"
   | "other";
 
 export interface HealthActivity {
@@ -27,21 +28,18 @@ export interface DailyHealth {
   activeCalories: number;
   bmrCalories: number;
   restingHr: number;
+  minHr: number;
+  maxHr: number;
+  avgRestingHr7d: number;
   sleepHours: number;
   deepSleepHours: number;
+  remSleepHours: number;
+  lightSleepHours: number;
+  sleepAvgHr: number;
   sleepScore: number | null;
   hrv: number | null;
   hrvStatus: HrvStatus;
-  avgStress: number;
-  maxStress: number;
-  bodyBatteryHigh: number;
-  bodyBatteryLow: number;
-  bodyBatteryCharged: number;
-  bodyBatteryDrained: number;
-  moderateIntensityMin: number;
-  vigorousIntensityMin: number;
-  stressCurve: number[];
-  bodyBatteryCurve: number[];
+  hrvWeeklyAvg: number | null;
   activities: HealthActivity[];
 }
 
@@ -51,8 +49,11 @@ export interface HealthWeekSummary {
   days: DailyHealth[];
   avgSteps: number;
   avgSleepHours: number;
+  avgSleepScore: number | null;
+  avgTotalCalories: number;
+  avgBmrCalories: number;
   avgActiveCalories: number;
-  avgStress: number;
+  avgRestingHr: number | null;
   avgHrv: number | null;
   stepGoalDays: number;
   totalActivities: number;
@@ -66,13 +67,19 @@ export interface HealthMonthSummary {
   totalSteps: number;
   avgSteps: number;
   avgSleepHours: number;
+  avgSleepScore: number | null;
+  avgTotalCalories: number;
+  avgBmrCalories: number;
   avgActiveCalories: number;
+  avgRestingHr: number | null;
+  avgHrv: number | null;
   stepGoalDays: number;
   totalActivities: number;
+  totalWorkoutMin: number;
   activityByType: Record<ActivityType, number>;
 }
 
-export type AppSection = "nutrition" | "health" | "check-in";
+export type AppSection = "food" | "activity" | "check-in";
 
 export interface CheckInPhoto {
   id: string;

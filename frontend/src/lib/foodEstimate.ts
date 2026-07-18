@@ -4,6 +4,20 @@ import type { QuickLogPayload } from "./quickLog";
 import type { NewSavedFoodPayload } from "./savedFood";
 import type { NewSavedMealPayload } from "./savedMeal";
 
+export const MAX_ESTIMATE_PHOTOS = 5;
+
+export function canEstimateFood(note: string, photoUrls: string[]): boolean {
+  return note.trim().length > 0 || photoUrls.length > 0;
+}
+
+export function selectedEstimateImageUrl(
+  photoUrls: string[],
+  selectedIndex: number,
+): string | undefined {
+  if (selectedIndex < 0 || selectedIndex >= photoUrls.length) return undefined;
+  return photoUrls[selectedIndex];
+}
+
 export function reviewedToQuickLog(payload: ReviewedFoodPayload): QuickLogPayload {
   return {
     name: payload.name,

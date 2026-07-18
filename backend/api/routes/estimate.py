@@ -13,6 +13,8 @@ from ..photo_storage import resolve_meal_photo_for_estimate
 
 router = APIRouter(prefix="/estimate", tags=["estimate"])
 
+MAX_PHOTOS = 5
+
 
 def _resolve_photos(photos: list[str], user_id: str, gcs: GCSService) -> list[str | Path]:
     return [resolve_meal_photo_for_estimate(photo, user_id, gcs) for photo in photos]
@@ -25,6 +27,9 @@ def estimate_food(
     estimator: MacrosEstimator = Depends(get_macros_estimator),
     gcs: GCSService = Depends(get_gcs_service),
 ) -> FoodEstimateResponse:
+    if len(payload.photos or []) > MAX_PHOTOS:
+        raise HTTPException(status_code=400, detail=f"At most {MAX_PHOTOS} photos allowed")
+
     note = (payload.note or "").strip() or None
     photos = _resolve_photos(payload.photos or [], user.id, gcs)
 

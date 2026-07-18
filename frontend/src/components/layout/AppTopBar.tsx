@@ -8,8 +8,8 @@ interface AppTopBarProps {
 }
 
 const SECTIONS: { id: AppSection; label: string }[] = [
-  { id: "nutrition", label: "Food" },
-  { id: "health", label: "Health" },
+  { id: "food", label: "Food" },
+  { id: "activity", label: "Activity" },
   { id: "check-in", label: "Check-in" },
 ];
 

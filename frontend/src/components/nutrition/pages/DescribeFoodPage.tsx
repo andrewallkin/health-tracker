@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { ApiError, estimateFood } from "../../../lib/api";
+import { canEstimateFood } from "../../../lib/foodEstimate";
 import type { DescribeFoodInput, FoodEstimate } from "../../../types/foodEstimate";
-import { MealPhotoPicker } from "../shared/MealPhotoPicker";
+import {
+  EstimatePhotoPicker,
+  type EstimatePhotoItem,
+} from "../shared/EstimatePhotoPicker";
 import { PageShell } from "../../layout/PageShell";
 
 interface DescribeFoodPageProps {
@@ -20,18 +24,24 @@ export function DescribeFoodPage({
   onEstimated,
 }: DescribeFoodPageProps) {
   const [note, setNote] = useState(initialInput?.note ?? "");
-  const [photoUrl, setPhotoUrl] = useState<string | undefined>(initialInput?.photoUrl);
+  const [photos, setPhotos] = useState<EstimatePhotoItem[]>(
+    (initialInput?.photoUrls ?? []).map((path) => ({ path, displayUrl: path })),
+  );
   const [isEstimating, setIsEstimating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canEstimate = hasApiKey && (note.trim().length > 0 || Boolean(photoUrl));
+  const canEstimate =
+    hasApiKey && canEstimateFood(
+      note,
+      photos.map((p) => p.path),
+    );
 
   const handleEstimate = async () => {
     if (!canEstimate) return;
 
     const input: DescribeFoodInput = {
       note: note.trim(),
-      photoUrl,
+      photoUrls: photos.map((p) => p.path),
     };
 
     setIsEstimating(true);
@@ -100,7 +110,7 @@ export function DescribeFoodPage({
           </p>
         )}
 
-        <MealPhotoPicker imageUrl={photoUrl} onChange={setPhotoUrl} />
+        <EstimatePhotoPicker photos={photos} onChange={setPhotos} />
 
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium text-zinc-500">

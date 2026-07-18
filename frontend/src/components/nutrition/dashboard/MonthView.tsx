@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useHealthMonth } from "../../../hooks/useHealthData";
 import { aggregateMonth, calorieHeatLevel, groupEntriesByDate } from "../../../lib/aggregates";
 import { fetchDayStatusesInRange, fetchEntriesInRange } from "../../../lib/api";
 import {
@@ -10,10 +11,12 @@ import {
   monthFromDateKey,
   parseDateKey,
 } from "../../../lib/dates";
+import { rangeEnergyBalance } from "../../../lib/energyBalance";
 import { PAGE_SHELL } from "../../../lib/layout";
 import { isFutureDate } from "../../../lib/logLabels";
 import type { DailyGoal, LogEntry } from "../../../types/nutrition";
 import { DateNav } from "../../layout/DateNav";
+import { EnergyBalanceCard } from "./EnergyBalanceCard";
 
 interface MonthViewProps {
   anchorDate: string;
@@ -65,6 +68,27 @@ export function MonthView({
     () => aggregateMonth(year, month, goal, entriesByDate, notTrackedDates),
     [year, month, goal, entriesByDate, notTrackedDates],
   );
+  const health = useHealthMonth(anchorDate, true);
+  const burnByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const d of health.days) {
+      map.set(d.date, d.totalCalories);
+    }
+    return map;
+  }, [health.days]);
+  const inMonthDays = useMemo(
+    () => summary.days.filter((d) => isSameMonth(d.date, year, month)),
+    [summary.days, year, month],
+  );
+  const balance = useMemo(
+    () =>
+      rangeEnergyBalance(inMonthDays, burnByDate, {
+        loading: health.loading,
+        garminDisconnected: health.garminDisconnected,
+        loadError: health.loadError,
+      }),
+    [inMonthDays, burnByDate, health.loading, health.garminDisconnected, health.loadError],
+  );
 
   return (
     <div className={PAGE_SHELL}>
@@ -85,6 +109,8 @@ export function MonthView({
             <StatCard label="Avg kcal" value={String(summary.averages.calories)} />
             <StatCard label="Total kcal" value={String(summary.totals.calories)} />
           </div>
+
+          <EnergyBalanceCard balance={balance} mode="average" />
 
           <div className="mb-2 grid grid-cols-7 gap-1">
             {WEEKDAY_LABELS.map((label) => (

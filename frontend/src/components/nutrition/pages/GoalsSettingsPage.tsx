@@ -1,6 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  connectGarmin,
+  disconnectGarmin,
   fetchAiSettings,
+  fetchGarminSettings,
   fetchModelOptions,
   updateAiSettings,
   type ModelOption,
@@ -53,15 +56,25 @@ export function GoalsSettingsPage({
   const [keySaving, setKeySaving] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
 
+  const [garminConnected, setGarminConnected] = useState(false);
+  const [garminEmail, setGarminEmail] = useState<string | null>(null);
+  const [garminDialog, setGarminDialog] = useState<"closed" | "input">("closed");
+  const [garminEmailInput, setGarminEmailInput] = useState("");
+  const [garminPasswordInput, setGarminPasswordInput] = useState("");
+  const [garminSaving, setGarminSaving] = useState(false);
+  const [garminError, setGarminError] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchAiSettings(), fetchModelOptions()])
-      .then(([ai, models]) => {
+    Promise.all([fetchAiSettings(), fetchModelOptions(), fetchGarminSettings()])
+      .then(([ai, models, garmin]) => {
         if (cancelled) return;
         setTextModel(ai.textModel);
         setImageModel(ai.imageModel);
         setHasApiKey(ai.hasApiKey);
         setModelOptions(models);
+        setGarminConnected(garmin.connected);
+        setGarminEmail(garmin.email);
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
@@ -161,10 +174,75 @@ export function GoalsSettingsPage({
     })();
   };
 
+  const openGarminInput = () => {
+    setGarminEmailInput("");
+    setGarminPasswordInput("");
+    setGarminError(null);
+    setGarminDialog("input");
+  };
+
+  const closeGarminDialog = () => {
+    if (garminSaving) return;
+    setGarminDialog("closed");
+    setGarminEmailInput("");
+    setGarminPasswordInput("");
+    setGarminError(null);
+  };
+
+  const handleConnectGarmin = async () => {
+    const email = garminEmailInput.trim();
+    const password = garminPasswordInput;
+    if (!email || !password) {
+      setGarminError("Enter your Garmin email and password.");
+      return;
+    }
+    setGarminSaving(true);
+    setGarminError(null);
+    try {
+      const saved = await connectGarmin({ email, password });
+      setGarminConnected(saved.connected);
+      setGarminEmail(saved.email);
+      setGarminDialog("closed");
+      setGarminEmailInput("");
+      setGarminPasswordInput("");
+    } catch (err) {
+      setGarminError(err instanceof Error ? err.message : "Could not connect Garmin");
+    } finally {
+      setGarminSaving(false);
+    }
+  };
+
+  const handleDisconnectGarmin = async () => {
+    setGarminSaving(true);
+    setGarminError(null);
+    try {
+      const saved = await disconnectGarmin();
+      setGarminConnected(saved.connected);
+      setGarminEmail(saved.email);
+    } catch (err) {
+      setGarminError(err instanceof Error ? err.message : "Could not disconnect Garmin");
+    } finally {
+      setGarminSaving(false);
+    }
+  };
+
+  const requestDisconnectGarmin = () => {
+    setGarminError(null);
+    void (async () => {
+      const ok = await confirm({
+        title: "Disconnect Garmin?",
+        message: "Saved Garmin tokens will be removed from this account.",
+        confirmLabel: "Disconnect",
+        destructive: true,
+      });
+      if (ok) await handleDisconnectGarmin();
+    })();
+  };
+
   return (
     <PageShell
       title="Settings"
-      subtitle="Daily targets and AI estimation"
+      subtitle="Daily targets, AI estimation, and Garmin"
       onBack={onBack}
       footer={
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center bg-gradient-to-t from-surface via-surface/90 to-transparent px-4 pb-6 pt-10">
@@ -197,6 +275,67 @@ export function GoalsSettingsPage({
               </p>
 
               <DailyGoalFields values={goalFields} onChange={setGoalFields} />
+            </section>
+
+            <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
+              <h2 className="mb-1 text-sm font-medium text-zinc-300">Garmin</h2>
+              <p className="mb-4 text-xs leading-relaxed text-zinc-500">
+                Connect your Garmin account. OAuth tokens are stored encrypted on the server.
+                Health data still uses static mock values for now.
+              </p>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-3">
+                {garminConnected ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+                        <CheckIcon />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-zinc-100">Connected</p>
+                        <p className="truncate text-xs text-zinc-500">{garminEmail}</p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={openGarminInput}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:bg-white/10 hover:text-white"
+                      >
+                        Reconnect
+                      </button>
+                      <button
+                        type="button"
+                        disabled={garminSaving}
+                        onClick={requestDisconnectGarmin}
+                        className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-50"
+                      >
+                        {garminSaving ? "Removing…" : "Disconnect"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-zinc-300">Not connected</p>
+                      <p className="text-xs text-zinc-500">Link Garmin to prepare for live health data</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={openGarminInput}
+                      className="shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-400 transition hover:bg-amber-500/20"
+                    >
+                      Connect Garmin
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {garminError && garminDialog === "closed" && (
+                <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+                  {garminError}
+                </p>
+              )}
             </section>
 
             <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
@@ -292,10 +431,7 @@ export function GoalsSettingsPage({
       </div>
 
       {keyDialog === "input" && (
-        <Modal
-          title={hasApiKey ? "Update API key" : "Add API key"}
-          onClose={closeKeyDialog}
-        >
+        <Modal title={hasApiKey ? "Update API key" : "Add API key"} onClose={closeKeyDialog}>
           <p className="mb-4 text-xs leading-relaxed text-zinc-500">
             Your key is encrypted before storage and never shown again after saving.
           </p>
@@ -336,12 +472,69 @@ export function GoalsSettingsPage({
           </div>
         </Modal>
       )}
+
+      {garminDialog === "input" && (
+        <Modal
+          title={garminConnected ? "Reconnect Garmin" : "Connect Garmin"}
+          onClose={closeGarminDialog}
+        >
+          <p className="mb-4 text-xs leading-relaxed text-zinc-500">
+            Sign in with your Garmin Connect email and password. We store OAuth tokens encrypted —
+            not your password.
+          </p>
+          {garminError && (
+            <p className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+              {garminError}
+            </p>
+          )}
+          <div className="space-y-3">
+            <input
+              type="email"
+              autoComplete="username"
+              autoFocus
+              value={garminEmailInput}
+              onChange={(e) => setGarminEmailInput(e.target.value)}
+              placeholder="Garmin email"
+              className={inputClass}
+            />
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={garminPasswordInput}
+              onChange={(e) => setGarminPasswordInput(e.target.value)}
+              placeholder="Password"
+              className={inputClass}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleConnectGarmin();
+              }}
+            />
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              disabled={garminSaving}
+              onClick={closeGarminDialog}
+              className="flex-1 rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-semibold text-zinc-300 transition hover:bg-white/10 disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={garminSaving}
+              onClick={() => void handleConnectGarmin()}
+              className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-semibold text-zinc-900 transition hover:bg-amber-400 disabled:opacity-40"
+            >
+              {garminSaving ? "Connecting…" : "Connect"}
+            </button>
+          </div>
+        </Modal>
+      )}
     </PageShell>
   );
 }
 
 const inputClass =
-  "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-white/20 focus:bg-white/8";
+  "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-base text-zinc-100 outline-none focus:border-white/20 focus:bg-white/8";
 
 const modelSelectClass =
   "w-full rounded-xl border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-zinc-100 outline-none focus:border-white/20 focus:bg-white/8";
@@ -382,10 +575,10 @@ function Modal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="api-key-dialog-title"
+        aria-labelledby="settings-dialog-title"
         className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-surface-elevated p-5 shadow-2xl shadow-black/50"
       >
-        <h3 id="api-key-dialog-title" className="text-base font-semibold text-white">
+        <h3 id="settings-dialog-title" className="text-base font-semibold text-white">
           {title}
         </h3>
         <div className="mt-3">{children}</div>
@@ -397,7 +590,7 @@ function Modal({
 function CheckIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <path d="M20 6 9 17l-5-5" />
+      <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

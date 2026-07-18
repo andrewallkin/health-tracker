@@ -17,7 +17,7 @@ export interface FoodEstimate {
 
 export interface DescribeFoodInput {
   note: string;
-  photoUrl?: string;
+  photoUrls: string[];
 }
 
 import type { MealSlot } from "./nutrition";

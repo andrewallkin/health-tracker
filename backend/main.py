@@ -5,7 +5,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api.routes import auth, check_ins, day_statuses, entries, estimate, foods, goals, meals, photos, users
+from .api.routes import (
+    auth,
+    check_ins,
+    day_statuses,
+    entries,
+    estimate,
+    foods,
+    goals,
+    health,
+    meals,
+    photos,
+    users,
+)
 from .api.routes import settings as settings_routes
 from .config import get_settings
 
@@ -40,6 +52,7 @@ app.include_router(estimate.router, prefix="/api")
 app.include_router(photos.router, prefix="/api")
 app.include_router(check_ins.router, prefix="/api")
 app.include_router(day_statuses.router, prefix="/api")
+app.include_router(health.router, prefix="/api")
 
 
 @app.get("/health")

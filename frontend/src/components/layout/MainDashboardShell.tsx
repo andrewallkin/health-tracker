@@ -1,7 +1,9 @@
 import { CheckInDayView } from "../checkin/CheckInDayView";
 import { CheckInMonthView } from "../checkin/CheckInMonthView";
 import { CheckInWeekView } from "../checkin/CheckInWeekView";
-import { HealthUnderConstructionPage } from "../health/HealthUnderConstructionPage";
+import { HealthDayView } from "../health/HealthDayView";
+import { HealthMonthView } from "../health/HealthMonthView";
+import { HealthWeekView } from "../health/HealthWeekView";
 import { Dashboard } from "../nutrition/dashboard/Dashboard";
 import { MonthView } from "../nutrition/dashboard/MonthView";
 import { WeekView } from "../nutrition/dashboard/WeekView";
@@ -74,11 +76,11 @@ export function MainDashboardShell({
       />
 
       <div className={TOP_BAR_OFFSET}>
-        {appSection === "nutrition" && loadingNutrition && (
+        {appSection === "food" && loadingNutrition && (
           <p className="px-4 py-8 text-center text-sm text-zinc-500">Loading…</p>
         )}
 
-        {appSection === "nutrition" && loadError && (
+        {appSection === "food" && loadError && (
           <div className="px-4 py-8 text-center">
             <p className="text-sm text-red-400">{loadError}</p>
             <button
@@ -91,7 +93,7 @@ export function MainDashboardShell({
           </div>
         )}
 
-        {appSection === "nutrition" && nutritionReady && dashboardTab === "day" && goal && (
+        {appSection === "food" && nutritionReady && dashboardTab === "day" && goal && (
           <Dashboard
             selectedDate={selectedDate}
             entries={entries}
@@ -123,7 +125,7 @@ export function MainDashboardShell({
           />
         )}
 
-        {appSection === "nutrition" && nutritionReady && dashboardTab === "week" && goal && (
+        {appSection === "food" && nutritionReady && dashboardTab === "week" && goal && (
           <WeekView
             anchorDate={selectedDate}
             goal={goal}
@@ -133,7 +135,7 @@ export function MainDashboardShell({
           />
         )}
 
-        {appSection === "nutrition" && nutritionReady && dashboardTab === "month" && goal && (
+        {appSection === "food" && nutritionReady && dashboardTab === "month" && goal && (
           <MonthView
             anchorDate={selectedDate}
             goal={goal}
@@ -143,7 +145,25 @@ export function MainDashboardShell({
           />
         )}
 
-        {appSection === "health" && <HealthUnderConstructionPage />}
+        {appSection === "activity" && dashboardTab === "day" && (
+          <HealthDayView selectedDate={selectedDate} onDateChange={onDateChange} />
+        )}
+
+        {appSection === "activity" && dashboardTab === "week" && (
+          <HealthWeekView
+            anchorDate={selectedDate}
+            onAnchorChange={onDateChange}
+            onSelectDate={onOpenDay}
+          />
+        )}
+
+        {appSection === "activity" && dashboardTab === "month" && (
+          <HealthMonthView
+            anchorDate={selectedDate}
+            onAnchorChange={onDateChange}
+            onSelectDate={onOpenDay}
+          />
+        )}
 
         {appSection === "check-in" && dashboardTab === "day" && (
           <CheckInDayView
@@ -174,9 +194,7 @@ export function MainDashboardShell({
         )}
       </div>
 
-      {(appSection === "nutrition" || appSection === "check-in") && (
-        <HomeFooter active={dashboardTab} onChange={onDashboardTabChange} />
-      )}
+      <HomeFooter active={dashboardTab} onChange={onDashboardTabChange} />
     </>
   );
 }

@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ...crypto import encrypt_api_key
 from ...database import get_db
-from ...db_models import UserRow
+from ...db_models import AppSettingsRow, UserRow
+from ...garmin_auth import GarminAuthError, login_and_dump_tokens
 from ..deps import get_current_user
 from ..mappers import app_settings_to_schema, get_or_create_app_settings
-from ..schemas import AiSettings, AiSettingsUpdate, ModelOption, ModelsResponse
+from ..schemas import (
+    AiSettings,
+    AiSettingsUpdate,
+    GarminConnectRequest,
+    GarminSettings,
+    ModelOption,
+    ModelsResponse,
+)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -63,6 +71,14 @@ MODEL_OPTIONS: list[ModelOption] = [
 ]
 
 
+def garmin_settings_from_row(row: AppSettingsRow) -> GarminSettings:
+    connected = bool(row.garmin_tokens_encrypted and row.garmin_email)
+    return GarminSettings(
+        connected=connected,
+        email=row.garmin_email if connected else None,
+    )
+
+
 @router.get("/models", response_model=ModelsResponse)
 def list_models(_user: UserRow = Depends(get_current_user)) -> ModelsResponse:
     return ModelsResponse(models=MODEL_OPTIONS)
@@ -92,3 +108,45 @@ def update_ai_settings(
     db.commit()
     db.refresh(row)
     return app_settings_to_schema(row)
+
+
+@router.get("/garmin", response_model=GarminSettings)
+def get_garmin_settings(
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_current_user),
+) -> GarminSettings:
+    return garmin_settings_from_row(get_or_create_app_settings(db, user.id))
+
+
+@router.post("/garmin/connect", response_model=GarminSettings)
+def connect_garmin(
+    payload: GarminConnectRequest,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_current_user),
+) -> GarminSettings:
+    email = str(payload.email).strip().lower()
+    password = payload.password
+    try:
+        tokens_json = login_and_dump_tokens(email, password)
+    except GarminAuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    row = get_or_create_app_settings(db, user.id)
+    row.garmin_email = email
+    row.garmin_tokens_encrypted = encrypt_api_key(tokens_json)
+    db.commit()
+    db.refresh(row)
+    return garmin_settings_from_row(row)
+
+
+@router.delete("/garmin", response_model=GarminSettings)
+def disconnect_garmin(
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_current_user),
+) -> GarminSettings:
+    row = get_or_create_app_settings(db, user.id)
+    row.garmin_email = None
+    row.garmin_tokens_encrypted = None
+    db.commit()
+    db.refresh(row)
+    return garmin_settings_from_row(row)
