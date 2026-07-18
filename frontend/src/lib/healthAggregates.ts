@@ -1,4 +1,4 @@
-import { emptyHealthDay, getMockHealthDay, getMockHealthRange } from "../data/mockHealth";
+import { emptyHealthDay } from "../data/mockHealth";
 import { getMonthGrid, getWeekRange } from "./dates";
 import type {
   ActivityType,
@@ -18,16 +18,16 @@ function averageNullable(values: Array<number | null>): number | null {
   return Math.round(average(valid));
 }
 
-export function getHealthDay(dateKey: string): DailyHealth | null {
-  return getMockHealthDay(dateKey);
-}
-
-export function aggregateHealthWeek(anchorDate: string): HealthWeekSummary {
+export function aggregateHealthWeek(
+  anchorDate: string,
+  recordedDays: DailyHealth[],
+): HealthWeekSummary {
   const { start, end, dates } = getWeekRange(anchorDate);
-  const days = dates.map((date) => getMockHealthDay(date) ?? emptyHealthDay(date));
+  const recordedByDate = new Map(recordedDays.map((day) => [day.date, day]));
+  const days = dates.map((date) => recordedByDate.get(date) ?? emptyHealthDay(date));
   const recorded = dates
-    .map((date) => getMockHealthDay(date))
-    .filter((day): day is DailyHealth => day !== null);
+    .map((date) => recordedByDate.get(date))
+    .filter((day): day is DailyHealth => day !== undefined);
 
   const totalWorkoutMin = recorded.reduce(
     (sum, day) => sum + day.activities.reduce((a, act) => a + act.durationMin, 0),
@@ -52,21 +52,21 @@ export function aggregateHealthWeek(anchorDate: string): HealthWeekSummary {
   };
 }
 
-export function aggregateHealthMonth(anchorDate: string): HealthMonthSummary {
+export function aggregateHealthMonth(
+  anchorDate: string,
+  recordedDays: DailyHealth[],
+): HealthMonthSummary {
   const [yearStr, monthStr] = anchorDate.split("-");
   const year = Number(yearStr);
   const month = Number(monthStr) - 1;
 
   const gridDates = getMonthGrid(year, month);
-  const days = gridDates.map((date) => getMockHealthDay(date) ?? emptyHealthDay(date));
-
-  const recorded = gridDates
-    .map((date) => getMockHealthDay(date))
-    .filter((day): day is DailyHealth => {
-      if (day === null) return false;
-      const [y, m] = day.date.split("-").map(Number);
-      return y === year && m - 1 === month;
-    });
+  const recordedByDate = new Map(recordedDays.map((day) => [day.date, day]));
+  const days = gridDates.map((date) => recordedByDate.get(date) ?? emptyHealthDay(date));
+  const recorded = recordedDays.filter((day) => {
+    const [y, m] = day.date.split("-").map(Number);
+    return y === year && m - 1 === month;
+  });
 
   const activityByType: Record<ActivityType, number> = {
     strength_training: 0,
@@ -117,7 +117,3 @@ export function stepHeatLevel(steps: number, goal: number): "none" | "low" | "mi
   return "high";
 }
 
-/** Range helper for future API sync. */
-export function getHealthRange(startKey: string, endKey: string): DailyHealth[] {
-  return getMockHealthRange(startKey, endKey);
-}

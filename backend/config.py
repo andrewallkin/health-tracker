@@ -29,6 +29,7 @@ class Settings:
     jwt_access_token_expire_minutes: int
     jwt_refresh_token_expire_days: int
     cookie_secure: bool
+    garmin_fetch_concurrency: int
 
     def __init__(self) -> None:
         self.postgres_user = os.environ["POSTGRES_USER"]
@@ -62,6 +63,12 @@ class Settings:
             os.environ.get("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7")
         )
         self.cookie_secure = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
+        raw = os.environ.get("GARMIN_FETCH_CONCURRENCY", "3").strip()
+        try:
+            concurrency = int(raw)
+        except ValueError:
+            concurrency = 3
+        self.garmin_fetch_concurrency = concurrency if concurrency > 0 else 3
 
 
 @lru_cache

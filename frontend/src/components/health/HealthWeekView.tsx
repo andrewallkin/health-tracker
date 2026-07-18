@@ -1,6 +1,7 @@
 import { aggregateHealthWeek } from "../../lib/healthAggregates";
 import { formatHoursAsHm, formatMinutesAsHm } from "../../lib/formatDuration";
 import { bandFromRatio, bandFromSleepScore, BAND_STYLES } from "../../lib/healthColors";
+import { useHealthWeek } from "../../hooks/useHealthData";
 import { addWeeks, formatWeekRange, getWeekRange } from "../../lib/dates";
 import { PAGE_SHELL } from "../../lib/layout";
 import { DateNav } from "../layout/DateNav";
@@ -19,7 +20,8 @@ export function HealthWeekView({
   onSelectDate,
 }: HealthWeekViewProps) {
   const { start, end } = getWeekRange(anchorDate);
-  const summary = aggregateHealthWeek(anchorDate);
+  const { days, errors, loading, loadError, garminDisconnected } = useHealthWeek(anchorDate, true);
+  const summary = aggregateHealthWeek(anchorDate, days);
   const stepGoal = summary.days.find((d) => d.steps > 0)?.stepGoal ?? 7000;
   const caloriesParts = Math.max(summary.avgBmrCalories + summary.avgActiveCalories, 1);
   const restingPct = (summary.avgBmrCalories / caloriesParts) * 100;
@@ -36,6 +38,26 @@ export function HealthWeekView({
         onNext={() => onAnchorChange(addWeeks(anchorDate, 1))}
       />
 
+      {errors.length > 0 && (
+        <p className="mb-3 text-xs text-amber-400/90">
+          {errors.map((entry) => entry.message).join(" · ")}
+        </p>
+      )}
+
+      {loading ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">Loading health…</p>
+        </div>
+      ) : garminDisconnected ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">Connect Garmin in Settings</p>
+        </div>
+      ) : loadError ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">{loadError}</p>
+        </div>
+      ) : (
+        <>
       <div className="mb-3 grid grid-cols-2 gap-3">
         <StepsAvgCard
           steps={summary.avgSteps}
@@ -164,6 +186,8 @@ export function HealthWeekView({
         formatBarLabel={(v) => `${Math.round(v / 100) / 10}k`}
         onSelectDate={onSelectDate}
       />
+        </>
+      )}
     </div>
   );
 }

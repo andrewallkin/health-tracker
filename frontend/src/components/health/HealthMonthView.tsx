@@ -1,5 +1,6 @@
 import { ACTIVITY_TYPE_LABELS } from "../../data/mockHealth";
 import { aggregateHealthMonth } from "../../lib/healthAggregates";
+import { useHealthMonth } from "../../hooks/useHealthData";
 import {
   addMonths,
   formatMonthYear,
@@ -24,7 +25,8 @@ export function HealthMonthView({
   onAnchorChange,
 }: HealthMonthViewProps) {
   const { year, month } = monthFromDateKey(anchorDate);
-  const summary = aggregateHealthMonth(anchorDate);
+  const { days, errors, loading, loadError, garminDisconnected } = useHealthMonth(anchorDate, true);
+  const summary = aggregateHealthMonth(anchorDate, days);
   const stepGoal =
     summary.days.find((d) => isSameMonth(d.date, year, month) && d.steps > 0)?.stepGoal ??
     7000;
@@ -47,6 +49,26 @@ export function HealthMonthView({
         onNext={() => onAnchorChange(addMonths(anchorDate, 1))}
       />
 
+      {errors.length > 0 && (
+        <p className="mb-3 text-xs text-amber-400/90">
+          {errors.map((entry) => entry.message).join(" · ")}
+        </p>
+      )}
+
+      {loading ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">Loading health…</p>
+        </div>
+      ) : garminDisconnected ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">Connect Garmin in Settings</p>
+        </div>
+      ) : loadError ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">{loadError}</p>
+        </div>
+      ) : (
+        <>
       <div className="mb-3 grid grid-cols-2 gap-3">
         <StepsAvgCard
           steps={summary.avgSteps}
@@ -166,6 +188,8 @@ export function HealthMonthView({
             })}
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

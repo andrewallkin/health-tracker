@@ -6,7 +6,7 @@ import {
 } from "../../data/mockHealth";
 import { formatHoursAsHm } from "../../lib/formatDuration";
 import { bandFromRatio, bandFromSleepScore, BAND_STYLES } from "../../lib/healthColors";
-import { getHealthDay } from "../../lib/healthAggregates";
+import { useHealthDay } from "../../hooks/useHealthData";
 import { addDays, formatDayHeader, isToday, toDateKey } from "../../lib/dates";
 import { PAGE_SHELL } from "../../lib/layout";
 import { isFutureDate } from "../../lib/logLabels";
@@ -24,9 +24,12 @@ interface HealthDayViewProps {
 }
 
 export function HealthDayView({ selectedDate, onDateChange }: HealthDayViewProps) {
-  const day = getHealthDay(selectedDate);
-  const title = isToday(selectedDate) ? "Today" : formatDayHeader(selectedDate);
   const future = isFutureDate(selectedDate);
+  const { day, errors, loading, loadError, garminDisconnected } = useHealthDay(
+    selectedDate,
+    !future,
+  );
+  const title = isToday(selectedDate) ? "Today" : formatDayHeader(selectedDate);
   const [detail, setDetail] = useState<DetailKind | null>(null);
 
   const hrvAccent = day ? hrvStatusAccent(day.hrvStatus) : "text-zinc-400";
@@ -44,9 +47,27 @@ export function HealthDayView({ selectedDate, onDateChange }: HealthDayViewProps
         disableNext={future}
       />
 
+      {errors.length > 0 && (
+        <p className="mb-3 text-xs text-amber-400/90">
+          {errors.map((entry) => entry.message).join(" · ")}
+        </p>
+      )}
+
       {future ? (
         <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
           <p className="text-sm text-zinc-500">No health data for future dates</p>
+        </div>
+      ) : loading ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">Loading health…</p>
+        </div>
+      ) : garminDisconnected ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">Connect Garmin in Settings</p>
+        </div>
+      ) : loadError ? (
+        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+          <p className="text-sm text-zinc-500">{loadError}</p>
         </div>
       ) : !day ? (
         <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">

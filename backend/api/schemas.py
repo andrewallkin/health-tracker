@@ -275,3 +275,64 @@ class DayStatus(BaseModel):
 
 class DayStatusUpsert(BaseModel):
     statusDate: str
+
+
+HrvStatus = Literal["balanced", "unbalanced", "low", "poor", "unavailable"]
+ActivityType = Literal[
+    "strength_training",
+    "running",
+    "cycling",
+    "walking",
+    "hiking",
+    "cardio",
+    "other",
+]
+
+
+class HealthActivity(BaseModel):
+    id: str
+    name: str
+    type: ActivityType
+    startTime: str
+    durationMin: int
+    calories: int
+    avgHr: int
+    distanceKm: float | None = None
+
+
+class DailyHealth(BaseModel):
+    date: str
+    steps: int
+    stepGoal: int
+    totalCalories: int
+    activeCalories: int
+    bmrCalories: int
+    restingHr: int
+    minHr: int
+    maxHr: int
+    avgRestingHr7d: int
+    sleepHours: float
+    deepSleepHours: float
+    remSleepHours: float
+    lightSleepHours: float
+    sleepAvgHr: int
+    sleepScore: int | None = None
+    hrv: int | None = None
+    hrvStatus: HrvStatus
+    hrvWeeklyAvg: int | None = None
+    activities: list[HealthActivity] = Field(default_factory=list)
+
+
+class HealthDayError(BaseModel):
+    date: str
+    message: str
+
+
+class HealthDayResponse(BaseModel):
+    day: DailyHealth | None = None
+    errors: list[HealthDayError] = Field(default_factory=list)
+
+
+class HealthDaysResponse(BaseModel):
+    days: list[DailyHealth] = Field(default_factory=list)
+    errors: list[HealthDayError] = Field(default_factory=list)

@@ -1,5 +1,5 @@
 import type { DescribeFoodInput, FoodEstimate } from "../types/foodEstimate";
-import type { CheckIn, CheckInUpsertPayload } from "../types/health";
+import type { CheckIn, CheckInUpsertPayload, DailyHealth } from "../types/health";
 import type { DailyGoal, DayStatus, LogEntry, SavedFood, SavedMeal } from "../types/nutrition";
 import type { NewSavedFoodPayload } from "./savedFood";
 import type { NewSavedMealPayload } from "./savedMeal";
@@ -36,6 +36,21 @@ export interface GarminSettings {
 export interface GarminConnectRequest {
   email: string;
   password: string;
+}
+
+export interface HealthDayError {
+  date: string;
+  message: string;
+}
+
+export interface HealthDayResponse {
+  day: DailyHealth | null;
+  errors: HealthDayError[];
+}
+
+export interface HealthDaysResponse {
+  days: DailyHealth[];
+  errors: HealthDayError[];
 }
 
 export interface ModelOption {
@@ -305,6 +320,39 @@ export async function connectGarmin(payload: GarminConnectRequest): Promise<Garm
 
 export async function disconnectGarmin(): Promise<GarminSettings> {
   return request<GarminSettings>("/settings/garmin", { method: "DELETE" });
+}
+
+export function clientTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+export async function fetchHealthDay(
+  date: string,
+  timezone = clientTimezone(),
+): Promise<HealthDayResponse> {
+  const params = new URLSearchParams({ date, timezone });
+  return request<HealthDayResponse>(`/health/day?${params}`);
+}
+
+export async function fetchHealthWeek(
+  start: string,
+  timezone = clientTimezone(),
+): Promise<HealthDaysResponse> {
+  const params = new URLSearchParams({ start, timezone });
+  return request<HealthDaysResponse>(`/health/week?${params}`);
+}
+
+export async function fetchHealthMonth(
+  year: number,
+  month: number,
+  timezone = clientTimezone(),
+): Promise<HealthDaysResponse> {
+  const params = new URLSearchParams({
+    year: String(year),
+    month: String(month),
+    timezone,
+  });
+  return request<HealthDaysResponse>(`/health/month?${params}`);
 }
 
 export async function fetchModelOptions(): Promise<ModelOption[]> {
