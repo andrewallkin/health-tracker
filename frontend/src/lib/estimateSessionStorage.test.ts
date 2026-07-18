@@ -1,10 +1,34 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   loadEstimateSession,
   saveEstimateSession,
   type EstimateSession,
 } from "./estimateSessionStorage";
+
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear() {
+      store.clear();
+    },
+    getItem(key: string) {
+      return store.has(key) ? store.get(key)! : null;
+    },
+    key(index: number) {
+      return [...store.keys()][index] ?? null;
+    },
+    removeItem(key: string) {
+      store.delete(key);
+    },
+    setItem(key: string, value: string) {
+      store.set(key, String(value));
+    },
+  };
+}
 
 const sample: EstimateSession = {
   input: { note: "oats", photoUrls: [] },
@@ -18,6 +42,13 @@ const sample: EstimateSession = {
     assumptions: [],
   },
 };
+
+beforeAll(() => {
+  Object.defineProperty(globalThis, "sessionStorage", {
+    value: createMemoryStorage(),
+    configurable: true,
+  });
+});
 
 afterEach(() => {
   sessionStorage.clear();
