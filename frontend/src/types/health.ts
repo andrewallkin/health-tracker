@@ -79,7 +79,7 @@ export interface HealthMonthSummary {
   activityByType: Record<ActivityType, number>;
 }
 
-export type AppSection = "nutrition" | "health" | "check-in";
+export type AppSection = "food" | "activity" | "check-in";
 
 export interface CheckInPhoto {
   id: string;

@@ -3,9 +3,15 @@ import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom"
 import App from "./App";
 import { ProtectedRoute } from "./components/layout/ProtectedRoute";
 import { RequireGoalsConfigured } from "./components/layout/RequireGoalsConfigured";
+import { defaultDashboardPath } from "./lib/appRoutes";
+import { toDateKey } from "./lib/dates";
 import { LoginPage } from "./pages/LoginPage";
 import { OnboardingGoalsPage } from "./pages/OnboardingGoalsPage";
 import { RegisterPage } from "./pages/RegisterPage";
+
+function HomeRedirect() {
+  return <Navigate to={defaultDashboardPath(toDateKey())} replace />;
+}
 
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -16,7 +22,10 @@ const router = createBrowserRouter([
       { path: "/onboarding/goals", element: <OnboardingGoalsPage /> },
       {
         element: <RequireGoalsConfigured />,
-        children: [{ path: "/*", element: <App /> }],
+        children: [
+          { path: "/", element: <HomeRedirect /> },
+          { path: "*", element: <App /> },
+        ],
       },
     ],
   },
