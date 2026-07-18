@@ -6,6 +6,7 @@ export type ActivityType =
   | "cycling"
   | "walking"
   | "hiking"
+  | "cardio"
   | "other";
 
 export interface HealthActivity {
@@ -66,9 +67,15 @@ export interface HealthMonthSummary {
   totalSteps: number;
   avgSteps: number;
   avgSleepHours: number;
+  avgSleepScore: number | null;
+  avgTotalCalories: number;
+  avgBmrCalories: number;
   avgActiveCalories: number;
+  avgRestingHr: number | null;
+  avgHrv: number | null;
   stepGoalDays: number;
   totalActivities: number;
+  totalWorkoutMin: number;
   activityByType: Record<ActivityType, number>;
 }
 

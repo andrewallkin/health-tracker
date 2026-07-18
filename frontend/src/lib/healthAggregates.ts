@@ -59,10 +59,14 @@ export function aggregateHealthMonth(anchorDate: string): HealthMonthSummary {
 
   const gridDates = getMonthGrid(year, month);
   const days = gridDates.map((date) => getMockHealthDay(date) ?? emptyHealthDay(date));
-  const inMonth = days.filter((d) => {
-    const [y, m] = d.date.split("-").map(Number);
-    return y === year && m - 1 === month;
-  });
+
+  const recorded = gridDates
+    .map((date) => getMockHealthDay(date))
+    .filter((day): day is DailyHealth => {
+      if (day === null) return false;
+      const [y, m] = day.date.split("-").map(Number);
+      return y === year && m - 1 === month;
+    });
 
   const activityByType: Record<ActivityType, number> = {
     strength_training: 0,
@@ -70,25 +74,37 @@ export function aggregateHealthMonth(anchorDate: string): HealthMonthSummary {
     cycling: 0,
     walking: 0,
     hiking: 0,
+    cardio: 0,
     other: 0,
   };
 
-  for (const day of inMonth) {
+  for (const day of recorded) {
     for (const activity of day.activities) {
       activityByType[activity.type] += 1;
     }
   }
 
+  const totalWorkoutMin = recorded.reduce(
+    (sum, day) => sum + day.activities.reduce((a, act) => a + act.durationMin, 0),
+    0,
+  );
+
   return {
     year,
     month,
     days,
-    totalSteps: inMonth.reduce((sum, d) => sum + d.steps, 0),
-    avgSteps: Math.round(average(inMonth.map((d) => d.steps))),
-    avgSleepHours: Math.round(average(inMonth.map((d) => d.sleepHours)) * 10) / 10,
-    avgActiveCalories: Math.round(average(inMonth.map((d) => d.activeCalories))),
-    stepGoalDays: inMonth.filter((d) => d.steps >= d.stepGoal && d.steps > 0).length,
-    totalActivities: inMonth.reduce((sum, d) => sum + d.activities.length, 0),
+    totalSteps: recorded.reduce((sum, d) => sum + d.steps, 0),
+    avgSteps: Math.round(average(recorded.map((d) => d.steps))),
+    avgSleepHours: Math.round(average(recorded.map((d) => d.sleepHours)) * 10) / 10,
+    avgSleepScore: averageNullable(recorded.map((d) => d.sleepScore)),
+    avgTotalCalories: Math.round(average(recorded.map((d) => d.totalCalories))),
+    avgBmrCalories: Math.round(average(recorded.map((d) => d.bmrCalories))),
+    avgActiveCalories: Math.round(average(recorded.map((d) => d.activeCalories))),
+    avgRestingHr: averageNullable(recorded.map((d) => (d.restingHr > 0 ? d.restingHr : null))),
+    avgHrv: averageNullable(recorded.map((d) => d.hrv)),
+    stepGoalDays: recorded.filter((d) => d.steps >= d.stepGoal && d.steps > 0).length,
+    totalActivities: recorded.reduce((sum, d) => sum + d.activities.length, 0),
+    totalWorkoutMin,
     activityByType,
   };
 }
