@@ -86,7 +86,8 @@ function App() {
     navigate(buildFlowPath({ type: "check-in" }, selectedDate));
   };
 
-  const openSettings = () => navigate(buildFlowPath({ type: "goals-settings" }));
+  const openSettings = () =>
+    navigate(buildFlowPath({ type: "goals-settings" }, selectedDate));
 
   const onViewChange = (view: AppView) => {
     if (view.type === "today") {

@@ -47,7 +47,7 @@ export function EstimateReviewPage({
   const [protein, setProtein] = useState(String(estimate.macros_g.protein));
   const [carbs, setCarbs] = useState(String(estimate.macros_g.carbs));
   const [fat, setFat] = useState(String(estimate.macros_g.fat));
-  const [addToDay, setAddToDay] = useState(false);
+  const [addToDay, setAddToDay] = useState(true);
   const [saveAsMeal, setSaveAsMeal] = useState(false);
   const [saveAsFood, setSaveAsFood] = useState(false);
   const [isSaving, setIsSaving] = useState(false);

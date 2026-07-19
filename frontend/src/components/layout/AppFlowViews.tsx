@@ -12,6 +12,7 @@ import { SavedMealsPage } from "../nutrition/pages/SavedMealsPage";
 import type { useCheckInData } from "../../hooks/useCheckInData";
 import type { useEstimateFlow } from "../../hooks/useEstimateFlow";
 import type { useNutritionData } from "../../hooks/useNutritionData";
+import { finishEstimateConfirm } from "../../lib/estimateNavigation";
 import { reviewedToQuickLog, reviewedToSavedFood, reviewedToSavedMeal } from "../../lib/foodEstimate";
 import { isFutureDate } from "../../lib/logLabels";
 import { findSavedFood } from "../../lib/savedFood";
@@ -164,18 +165,16 @@ export function AppFlowViews({
         estimate={estimateSession.estimate}
         logDate={selectedDate}
         onBack={() => onViewChange({ type: "describe-food" })}
-        onConfirm={async (payload, { addToDay, saveAsMeal, saveAsFood }) => {
+        onConfirm={async (payload, options) => {
+          const { addToDay, saveAsMeal, saveAsFood } = options;
           if (saveAsFood) await addSavedFood(reviewedToSavedFood(payload));
           if (saveAsMeal) await addSavedMeal(reviewedToSavedMeal(payload));
           if (addToDay) await addQuickLogEntry(reviewedToQuickLog(payload));
-          clearEstimateSession();
-          if (addToDay) {
-            onViewChange({ type: "today" });
-          } else if (saveAsFood) {
-            onViewChange({ type: "saved-meals", tab: "foods" });
-          } else {
-            onViewChange({ type: "saved-meals", tab: "meals" });
-          }
+          finishEstimateConfirm({
+            options,
+            onViewChange,
+            clearEstimateSession,
+          });
         }}
       />
     );
