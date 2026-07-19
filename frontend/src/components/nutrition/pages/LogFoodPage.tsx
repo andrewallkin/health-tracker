@@ -84,12 +84,8 @@ export function LogFoodPage({
           </p>
         )}
 
-        {food.imageUrl ? (
+        {food.imageUrl && (
           <MealPhotoView src={food.imageUrl} alt={food.name} />
-        ) : (
-          <div className="flex h-32 items-center justify-center rounded-2xl border border-white/10 bg-white/4">
-            <span className="text-4xl opacity-30">🥗</span>
-          </div>
         )}
 
         {food.description && (

@@ -61,20 +61,16 @@ export function SavedMealCard({ meal, onSelect, onEdit }: SavedMealCardProps) {
 }
 
 function MealThumbnail({ name, imageUrl }: { name: string; imageUrl?: string }) {
-  if (imageUrl) {
-    return (
-      <img
-        src={imageUrl}
-        alt={name}
-        className="h-20 w-20 shrink-0 rounded-xl object-cover"
-      />
-    );
+  if (!imageUrl) {
+    return null;
   }
 
   return (
-    <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-white/10 to-white/4">
-      <span className="text-2xl opacity-40">🍽</span>
-    </div>
+    <img
+      src={imageUrl}
+      alt={name}
+      className="h-20 w-20 shrink-0 rounded-xl object-cover"
+    />
   );
 }
 
