@@ -284,11 +284,14 @@ def test_saved_foods_and_composed_meals(client, auth_headers):
             "protein": 25,
             "carbs": 10,
             "fat": 15,
+            # stale clients may still send tags — must be ignored, not rejected
             "tags": ["protein"],
         },
     )
     assert mince.status_code == 201
-    mince_id = mince.json()["id"]
+    mince_body = mince.json()
+    assert "tags" not in mince_body
+    mince_id = mince_body["id"]
 
     rice = client.post(
         "/api/foods",
@@ -303,7 +306,14 @@ def test_saved_foods_and_composed_meals(client, auth_headers):
         },
     )
     assert rice.status_code == 201
-    rice_id = rice.json()["id"]
+    rice_body = rice.json()
+    assert "tags" not in rice_body
+    rice_id = rice_body["id"]
+
+    listed = client.get("/api/foods", headers=auth_headers)
+    assert listed.status_code == 200
+    for food in listed.json():
+        assert "tags" not in food
 
     meal = client.post(
         "/api/meals",

@@ -50,7 +50,6 @@ def create_food(
         protein=payload.protein,
         carbs=payload.carbs,
         fat=payload.fat,
-        tags=list(payload.tags),
     )
     db.add(row)
     db.commit()
@@ -79,7 +78,6 @@ def update_food(
         "protein": "protein",
         "carbs": "carbs",
         "fat": "fat",
-        "tags": "tags",
     }
     for api_field, orm_field in field_map.items():
         if api_field in updates:
@@ -88,8 +86,6 @@ def update_food(
                 value = value.strip()
             if api_field == "imageUrl":
                 value = normalize_image_url_for_storage(value, user_id=user.id)
-            if api_field == "tags" and value is not None:
-                value = list(value)
             setattr(row, orm_field, value)
 
     db.commit()

@@ -1,7 +1,5 @@
 export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack";
 
-export type FoodTag = "protein" | "carb" | "veg" | "dairy" | "topping" | "sweet" | "snack";
-
 export type SavedMealKind = "manual" | "composed";
 
 export interface DailyGoal {
@@ -43,7 +41,6 @@ export interface SavedFood {
   protein: number;
   carbs: number;
   fat: number;
-  tags?: FoodTag[];
 }
 
 export interface SavedMeal {

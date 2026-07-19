@@ -9,8 +9,7 @@ import type {
   ReviewConfirmOptions,
   ReviewedFoodPayload,
 } from "../../../types/foodEstimate";
-import type { MealSlot, FoodTag } from "../../../types/nutrition";
-import { FOOD_TAG_LABELS, FOOD_TAGS } from "../../../lib/foodTags";
+import type { MealSlot } from "../../../types/nutrition";
 import { useEnergyInput } from "../../../hooks/useEnergyInput";
 import { MacroChips } from "../dashboard/MacroChips";
 import { EnergyInputFields } from "../shared/EnergyInputFields";
@@ -51,7 +50,6 @@ export function EstimateReviewPage({
   const [addToDay, setAddToDay] = useState(false);
   const [saveAsMeal, setSaveAsMeal] = useState(false);
   const [saveAsFood, setSaveAsFood] = useState(false);
-  const [foodTags, setFoodTags] = useState<FoodTag[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
@@ -71,18 +69,12 @@ export function EstimateReviewPage({
   const isValid = name.trim().length > 0 && payload.calories > 0;
   const canConfirm = isValid && (addToDay || saveAsMeal || saveAsFood);
 
-  const toggleFoodTag = (tag: FoodTag) => {
-    setFoodTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
-    );
-  };
-
   const handleConfirm = async () => {
     if (!canConfirm) return;
     setIsSaving(true);
     setError(null);
     try {
-      await onConfirm(payload, { addToDay, saveAsMeal, saveAsFood, foodTags });
+      await onConfirm(payload, { addToDay, saveAsMeal, saveAsFood });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save.");
     } finally {
@@ -247,24 +239,6 @@ export function EstimateReviewPage({
               description="Add to your food library"
             />
           </div>
-          {saveAsFood && (
-            <div className="mt-3 flex flex-wrap gap-2 border-t border-white/10 pt-3">
-              {FOOD_TAGS.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => toggleFoodTag(tag)}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-                    foodTags.includes(tag)
-                      ? "border-amber-500/50 bg-amber-500/15 text-amber-400"
-                      : "border-white/10 bg-white/4 text-zinc-400 hover:border-white/20"
-                  }`}
-                >
-                  {FOOD_TAG_LABELS[tag]}
-                </button>
-              ))}
-            </div>
-          )}
         </section>
       </div>
     </PageShell>

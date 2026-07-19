@@ -4,8 +4,7 @@ import { addToDayLabel } from "../../../lib/logLabels";
 import type { LogFoodPayload } from "../../../lib/logEntry";
 import { defaultMealSlot } from "../../../lib/quickLog";
 import { findSavedFood } from "../../../lib/savedFood";
-import { FOOD_TAG_LABELS } from "../../../lib/foodTags";
-import type { FoodTag, MealSlot, SavedFood } from "../../../types/nutrition";
+import type { MealSlot, SavedFood } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
 import { MealPhotoView } from "../shared/MealPhotoView";
 import { PageShell } from "../../layout/PageShell";
@@ -95,19 +94,6 @@ export function LogFoodPage({
 
         {food.description && (
           <p className="text-sm leading-relaxed text-zinc-400">{food.description}</p>
-        )}
-
-        {(food.tags?.length ?? 0) > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {food.tags!.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-500"
-              >
-                {FOOD_TAG_LABELS[tag as FoodTag]}
-              </span>
-            ))}
-          </div>
         )}
 
         <section className="rounded-2xl border border-white/10 bg-white/4 p-4">

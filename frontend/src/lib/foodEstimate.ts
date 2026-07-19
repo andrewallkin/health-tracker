@@ -1,5 +1,4 @@
 import type { ReviewedFoodPayload } from "../types/foodEstimate";
-import type { FoodTag } from "../types/nutrition";
 import type { QuickLogPayload } from "./quickLog";
 import type { NewSavedFoodPayload } from "./savedFood";
 import type { NewSavedMealPayload } from "./savedMeal";
@@ -42,10 +41,7 @@ export function reviewedToSavedMeal(payload: ReviewedFoodPayload): NewSavedMealP
   };
 }
 
-export function reviewedToSavedFood(
-  payload: ReviewedFoodPayload,
-  tags?: FoodTag[],
-): NewSavedFoodPayload {
+export function reviewedToSavedFood(payload: ReviewedFoodPayload): NewSavedFoodPayload {
   return {
     name: payload.name,
     description: payload.description,
@@ -54,6 +50,5 @@ export function reviewedToSavedFood(
     protein: payload.protein,
     carbs: payload.carbs,
     fat: payload.fat,
-    tags: tags && tags.length > 0 ? tags : undefined,
   };
 }

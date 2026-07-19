@@ -1,8 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { foodMatchesTagFilter } from "../../../lib/foodTags";
-import type { FoodTag, SavedFood, SavedMeal } from "../../../types/nutrition";
-import { FOOD_TAG_LABELS, FOOD_TAGS } from "../../../lib/foodTags";
+import type { SavedFood, SavedMeal } from "../../../types/nutrition";
 import { PageShell } from "../../layout/PageShell";
 import { SavedFoodCard } from "../shared/SavedFoodCard";
 import { SavedMealCard } from "../shared/SavedMealCard";
@@ -36,7 +34,6 @@ export function SavedMealsPage({
 }: SavedMealsPageProps) {
   const [tab, setTab] = useState<LibraryTab>(initialTab);
   const [query, setQuery] = useState("");
-  const [tagFilter, setTagFilter] = useState<FoodTag | null>(null);
 
   const filteredMeals = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -51,14 +48,13 @@ export function SavedMealsPage({
   const filteredFoods = useMemo(() => {
     const q = query.trim().toLowerCase();
     return foods.filter((food) => {
-      if (!foodMatchesTagFilter(food.tags, tagFilter)) return false;
       if (!q) return true;
       return (
         food.name.toLowerCase().includes(q) ||
         food.description?.toLowerCase().includes(q)
       );
     });
-  }, [foods, query, tagFilter]);
+  }, [foods, query]);
 
   const isMealsTab = tab === "meals";
 
@@ -88,20 +84,6 @@ export function SavedMealsPage({
           + New
         </button>
       </div>
-
-      {!isMealsTab && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          <FilterChip label="All" active={tagFilter === null} onClick={() => setTagFilter(null)} />
-          {FOOD_TAGS.map((tag) => (
-            <FilterChip
-              key={tag}
-              label={FOOD_TAG_LABELS[tag]}
-              active={tagFilter === tag}
-              onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
-            />
-          ))}
-        </div>
-      )}
 
       <div className="space-y-2">
         {isMealsTab ? (
@@ -151,30 +133,6 @@ function TabButton({
         active
           ? "bg-amber-500/20 text-amber-400"
           : "text-zinc-400 hover:text-zinc-200"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function FilterChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-        active
-          ? "border-amber-500/50 bg-amber-500/15 text-amber-400"
-          : "border-white/10 bg-white/4 text-zinc-400 hover:border-white/20"
       }`}
     >
       {label}

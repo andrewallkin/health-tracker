@@ -1,8 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { parseNonNegative, parsePositive } from "../../../lib/numericInput";
 import type { NewSavedFoodPayload } from "../../../lib/savedFood";
-import { FOOD_TAG_LABELS, FOOD_TAGS } from "../../../lib/foodTags";
-import type { FoodTag, SavedFood } from "../../../types/nutrition";
+import type { SavedFood } from "../../../types/nutrition";
 import { useEnergyInput } from "../../../hooks/useEnergyInput";
 import { MacroChips } from "../dashboard/MacroChips";
 import { EnergyInputFields } from "../shared/EnergyInputFields";
@@ -28,7 +27,6 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
   const [protein, setProtein] = useState(String(initialFood?.protein ?? ""));
   const [carbs, setCarbs] = useState(String(initialFood?.carbs ?? ""));
   const [fat, setFat] = useState(String(initialFood?.fat ?? ""));
-  const [tags, setTags] = useState<FoodTag[]>(initialFood?.tags ?? []);
   const [logToDay, setLogToDay] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -42,16 +40,9 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
     protein: parseNonNegative(protein),
     carbs: parseNonNegative(carbs),
     fat: parseNonNegative(fat),
-    tags: tags.length > 0 ? tags : undefined,
   };
 
   const isValid = name.trim().length > 0 && payload.calories > 0;
-
-  const toggleTag = (tag: FoodTag) => {
-    setTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
-    );
-  };
 
   const handleSave = async () => {
     if (!isValid) return;
@@ -129,26 +120,6 @@ export function NewFoodPage({ initialFood, onBack, onSave, onDelete }: NewFoodPa
         </Field>
 
         <MealPhotoPicker imageUrl={imageUrl} onChange={setImageUrl} />
-
-        <section>
-          <h2 className="mb-3 text-sm font-medium text-zinc-400">Tags (optional)</h2>
-          <div className="flex flex-wrap gap-2">
-            {FOOD_TAGS.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => toggleTag(tag)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                  tags.includes(tag)
-                    ? "border-amber-500/50 bg-amber-500/15 text-amber-400"
-                    : "border-white/10 bg-white/4 text-zinc-400 hover:border-white/20"
-                }`}
-              >
-                {FOOD_TAG_LABELS[tag]}
-              </button>
-            ))}
-          </div>
-        </section>
 
         <section>
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Nutrition per portion</h2>

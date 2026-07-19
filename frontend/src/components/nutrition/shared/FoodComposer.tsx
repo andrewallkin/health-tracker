@@ -2,8 +2,7 @@ import { useMemo, useState } from "react";
 
 import type { FoodComponentSelection } from "../../../lib/composeFoods";
 import { sumFoodComponents } from "../../../lib/composeFoods";
-import { FOOD_TAG_LABELS, FOOD_TAGS, foodMatchesTagFilter } from "../../../lib/foodTags";
-import type { FoodTag, SavedFood } from "../../../types/nutrition";
+import type { SavedFood } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
 
 interface FoodComposerProps {
@@ -20,7 +19,6 @@ export function FoodComposer({
   onManageFoods,
 }: FoodComposerProps) {
   const [query, setQuery] = useState("");
-  const [tagFilter, setTagFilter] = useState<FoodTag | null>(null);
 
   const totals = useMemo(
     () => sumFoodComponents(savedFoods, components),
@@ -30,14 +28,13 @@ export function FoodComposer({
   const availableFoods = useMemo(() => {
     const q = query.trim().toLowerCase();
     return savedFoods.filter((food) => {
-      if (!foodMatchesTagFilter(food.tags, tagFilter)) return false;
       if (!q) return true;
       return (
         food.name.toLowerCase().includes(q) ||
         food.description?.toLowerCase().includes(q)
       );
     });
-  }, [savedFoods, query, tagFilter]);
+  }, [savedFoods, query]);
 
   const componentFoods = useMemo(() => {
     const byId = new Map(savedFoods.map((food) => [food.id, food]));
@@ -145,22 +142,6 @@ export function FoodComposer({
           className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-white/20"
         />
 
-        <div className="flex flex-wrap gap-2">
-          <TagChip
-            label="All"
-            active={tagFilter === null}
-            onClick={() => setTagFilter(null)}
-          />
-          {FOOD_TAGS.map((tag) => (
-            <TagChip
-              key={tag}
-              label={FOOD_TAG_LABELS[tag]}
-              active={tagFilter === tag}
-              onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
-            />
-          ))}
-        </div>
-
         <div className="max-h-48 space-y-1 overflow-y-auto">
           {availableFoods.length === 0 ? (
             <p className="py-4 text-center text-sm text-zinc-500">No foods match.</p>
@@ -219,30 +200,6 @@ function QuantityStepper({
         +
       </button>
     </div>
-  );
-}
-
-function TagChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-        active
-          ? "border-amber-500/50 bg-amber-500/15 text-amber-400"
-          : "border-white/10 bg-white/4 text-zinc-400 hover:border-white/20"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 

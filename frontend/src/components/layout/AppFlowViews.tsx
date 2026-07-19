@@ -164,8 +164,8 @@ export function AppFlowViews({
         estimate={estimateSession.estimate}
         logDate={selectedDate}
         onBack={() => onViewChange({ type: "describe-food" })}
-        onConfirm={async (payload, { addToDay, saveAsMeal, saveAsFood, foodTags }) => {
-          if (saveAsFood) await addSavedFood(reviewedToSavedFood(payload, foodTags));
+        onConfirm={async (payload, { addToDay, saveAsMeal, saveAsFood }) => {
+          if (saveAsFood) await addSavedFood(reviewedToSavedFood(payload));
           if (saveAsMeal) await addSavedMeal(reviewedToSavedMeal(payload));
           if (addToDay) await addQuickLogEntry(reviewedToQuickLog(payload));
           clearEstimateSession();

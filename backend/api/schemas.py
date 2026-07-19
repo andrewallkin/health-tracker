@@ -2,18 +2,13 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 MealSlot = Literal["breakfast", "lunch", "dinner", "snack"]
 SavedMealKind = Literal["manual", "composed"]
-FoodTag = Literal["protein", "carb", "veg", "dairy", "topping", "sweet", "snack"]
 EstimateConfidence = Literal["high", "medium", "low"]
 EstimateSource = Literal["label", "estimate"]
-
-FOOD_TAGS: frozenset[str] = frozenset(
-    {"protein", "carb", "veg", "dairy", "topping", "sweet", "snack"}
-)
 
 
 class DailyGoal(BaseModel):
@@ -93,7 +88,6 @@ class SavedFood(BaseModel):
     protein: float = Field(ge=0)
     carbs: float = Field(ge=0)
     fat: float = Field(ge=0)
-    tags: list[FoodTag] = Field(default_factory=list)
 
 
 class SavedFoodCreate(BaseModel):
@@ -104,14 +98,6 @@ class SavedFoodCreate(BaseModel):
     protein: float = Field(ge=0)
     carbs: float = Field(ge=0)
     fat: float = Field(ge=0)
-    tags: list[FoodTag] = Field(default_factory=list)
-
-    @field_validator("tags")
-    @classmethod
-    def validate_tags(cls, tags: list[FoodTag]) -> list[FoodTag]:
-        if len(tags) != len(set(tags)):
-            raise ValueError("duplicate tags are not allowed")
-        return tags
 
 
 class SavedFoodUpdate(BaseModel):
@@ -122,14 +108,6 @@ class SavedFoodUpdate(BaseModel):
     protein: float | None = Field(default=None, ge=0)
     carbs: float | None = Field(default=None, ge=0)
     fat: float | None = Field(default=None, ge=0)
-    tags: list[FoodTag] | None = None
-
-    @field_validator("tags")
-    @classmethod
-    def validate_tags(cls, tags: list[FoodTag] | None) -> list[FoodTag] | None:
-        if tags is not None and len(tags) != len(set(tags)):
-            raise ValueError("duplicate tags are not allowed")
-        return tags
 
 
 class FoodDeleteConflict(BaseModel):
