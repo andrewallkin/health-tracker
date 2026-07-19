@@ -54,6 +54,30 @@ describe("buildFlowPath", () => {
       "/check-in/entry/c1?date=2026-07-18",
     );
   });
+
+  it("threads working date through library, create/edit, and settings flows", () => {
+    expect(buildFlowPath({ type: "goals-settings" }, "2026-07-10")).toBe(
+      "/settings?date=2026-07-10",
+    );
+    expect(buildFlowPath({ type: "saved-meals", tab: "foods" }, "2026-07-10")).toBe(
+      "/food/saved?tab=foods&date=2026-07-10",
+    );
+    expect(buildFlowPath({ type: "saved-meals", tab: "meals" }, "2026-07-10")).toBe(
+      "/food/saved?tab=meals&date=2026-07-10",
+    );
+    expect(buildFlowPath({ type: "new-meal" }, "2026-07-10")).toBe(
+      "/food/meals/new?date=2026-07-10",
+    );
+    expect(buildFlowPath({ type: "edit-meal", mealId: "m1" }, "2026-07-10")).toBe(
+      "/food/meals/m1/edit?date=2026-07-10",
+    );
+    expect(buildFlowPath({ type: "new-food" }, "2026-07-10")).toBe(
+      "/food/foods/new?date=2026-07-10",
+    );
+    expect(buildFlowPath({ type: "edit-food", foodId: "f1" }, "2026-07-10")).toBe(
+      "/food/foods/f1/edit?date=2026-07-10",
+    );
+  });
 });
 
 describe("parseAppLocation", () => {
@@ -79,6 +103,12 @@ describe("parseAppLocation", () => {
       date: null,
     } satisfies AppFlowLocation);
 
+    expect(parseAppLocation("/settings", "date=2026-07-10")).toEqual({
+      kind: "flow",
+      view: { type: "goals-settings" },
+      date: "2026-07-10",
+    });
+
     expect(parseAppLocation("/food/add", "date=2026-07-18")).toEqual({
       kind: "flow",
       view: { type: "add-food" },
@@ -89,6 +119,24 @@ describe("parseAppLocation", () => {
       kind: "flow",
       view: { type: "saved-meals", tab: "meals" },
       date: null,
+    });
+
+    expect(parseAppLocation("/food/saved", "tab=foods&date=2026-07-10")).toEqual({
+      kind: "flow",
+      view: { type: "saved-meals", tab: "foods" },
+      date: "2026-07-10",
+    });
+
+    expect(parseAppLocation("/food/meals/new", "date=2026-07-10")).toEqual({
+      kind: "flow",
+      view: { type: "new-meal" },
+      date: "2026-07-10",
+    });
+
+    expect(parseAppLocation("/food/foods/f1/edit", "date=2026-07-10")).toEqual({
+      kind: "flow",
+      view: { type: "edit-food", foodId: "f1" },
+      date: "2026-07-10",
     });
 
     expect(parseAppLocation("/food/log/meal/m1", "date=2026-07-18&entryId=e1")).toEqual({

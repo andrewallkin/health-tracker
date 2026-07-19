@@ -52,19 +52,19 @@ export function buildFlowPath(
 ): string {
   switch (view.type) {
     case "goals-settings":
-      return "/settings";
+      return withQuery("/settings", { date });
     case "add-food":
       return withQuery("/food/add", { date });
     case "saved-meals":
-      return withQuery("/food/saved", { tab: view.tab ?? "foods" });
+      return withQuery("/food/saved", { tab: view.tab ?? "foods", date });
     case "new-meal":
-      return "/food/meals/new";
+      return withQuery("/food/meals/new", { date });
     case "edit-meal":
-      return `/food/meals/${view.mealId}/edit`;
+      return withQuery(`/food/meals/${view.mealId}/edit`, { date });
     case "new-food":
-      return "/food/foods/new";
+      return withQuery("/food/foods/new", { date });
     case "edit-food":
-      return `/food/foods/${view.foodId}/edit`;
+      return withQuery(`/food/foods/${view.foodId}/edit`, { date });
     case "describe-food":
       return withQuery("/food/estimate", { date });
     case "estimate-review":

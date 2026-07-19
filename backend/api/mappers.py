@@ -88,7 +88,6 @@ def daily_goal_to_schema(row: DailyGoalRow) -> DailyGoal:
 
 
 def saved_food_to_schema(row: SavedFoodRow, gcs: GCSService) -> SavedFood:
-    tags = row.tags if isinstance(row.tags, list) else []
     return SavedFood(
         id=row.id,
         name=row.name,
@@ -98,7 +97,6 @@ def saved_food_to_schema(row: SavedFoodRow, gcs: GCSService) -> SavedFood:
         protein=row.protein,
         carbs=row.carbs,
         fat=row.fat,
-        tags=tags,
     )
 
 

@@ -1,4 +1,4 @@
-import type { FoodTag, SavedFood, SavedMeal } from "../types/nutrition";
+import type { SavedFood, SavedMeal } from "../types/nutrition";
 
 export interface NewSavedFoodPayload {
   name: string;
@@ -8,7 +8,6 @@ export interface NewSavedFoodPayload {
   protein: number;
   carbs: number;
   fat: number;
-  tags?: FoodTag[];
 }
 
 export function findSavedFood(foods: SavedFood[], id: string): SavedFood | undefined {

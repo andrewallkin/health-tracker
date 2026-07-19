@@ -180,7 +180,7 @@ def test_health_week_returns_seven_days_and_per_day_errors(
     def fake_build_fetch_day(_settings_row):
         def fetch_day(date_str: str) -> dict:
             requested.append(date_str)
-            if date_str == "2026-07-15":
+            if date_str == "2026-06-03":
                 raise RuntimeError("Garmin unavailable")
             return health_payload(date_str)
 
@@ -190,23 +190,33 @@ def test_health_week_returns_seven_days_and_per_day_errors(
         "backend.api.routes.health.build_fetch_day", fake_build_fetch_day
     )
 
+    # Use a fully-past week so "today" is never included in requested dates.
     response = client.get(
         "/api/health/week",
-        params={"start": "2026-07-13", "timezone": "UTC"},
+        params={"start": "2026-06-01", "timezone": "UTC"},
         headers=auth_headers,
     )
 
     assert response.status_code == 200
-    assert sorted(requested) == [f"2026-07-{day:02d}" for day in range(13, 19)]
+    assert sorted(requested) == [
+        "2026-06-01",
+        "2026-06-02",
+        "2026-06-03",
+        "2026-06-04",
+        "2026-06-05",
+        "2026-06-06",
+        "2026-06-07",
+    ]
     assert [day["date"] for day in response.json()["days"]] == [
-        "2026-07-13",
-        "2026-07-14",
-        "2026-07-16",
-        "2026-07-17",
-        "2026-07-18",
+        "2026-06-01",
+        "2026-06-02",
+        "2026-06-04",
+        "2026-06-05",
+        "2026-06-06",
+        "2026-06-07",
     ]
     assert response.json()["errors"] == [
-        {"date": "2026-07-15", "message": "Garmin unavailable"}
+        {"date": "2026-06-03", "message": "Garmin unavailable"}
     ]
 
 

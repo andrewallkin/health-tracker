@@ -96,7 +96,6 @@ SAVED_FOODS = [
         "protein": 25,
         "carbs": 10,
         "fat": 15,
-        "tags": ["protein"],
     },
     {
         "id": "food-2",
@@ -106,7 +105,6 @@ SAVED_FOODS = [
         "protein": 4,
         "carbs": 45,
         "fat": 1,
-        "tags": ["carb"],
     },
     {
         "id": "food-3",
@@ -116,7 +114,6 @@ SAVED_FOODS = [
         "protein": 2,
         "carbs": 6,
         "fat": 11,
-        "tags": ["topping"],
     },
 ]
 

@@ -1,5 +1,4 @@
-import type { SavedFood, FoodTag } from "../../../types/nutrition";
-import { FOOD_TAG_LABELS } from "../../../lib/foodTags";
+import type { SavedFood } from "../../../types/nutrition";
 import { MacroChips } from "../dashboard/MacroChips";
 
 interface SavedFoodCardProps {
@@ -24,18 +23,6 @@ export function SavedFoodCard({ food, onSelect, onEdit }: SavedFoodCardProps) {
               <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500">
                 {food.description}
               </p>
-            )}
-            {(food.tags?.length ?? 0) > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {food.tags!.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500"
-                  >
-                    {FOOD_TAG_LABELS[tag as FoodTag]}
-                  </span>
-                ))}
-              </div>
             )}
             <div className="mt-2.5">
               <MacroChips

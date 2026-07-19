@@ -78,7 +78,6 @@ class SavedFoodRow(Base):
     protein: Mapped[float] = mapped_column(Float, nullable=False)
     carbs: Mapped[float] = mapped_column(Float, nullable=False)
     fat: Mapped[float] = mapped_column(Float, nullable=False)
-    tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
