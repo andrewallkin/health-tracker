@@ -169,6 +169,7 @@ export function MainDashboardShell({
           <CheckInDayView
             selectedDate={selectedDate}
             checkIn={checkIn.checkIn}
+            sevenDayAvg={checkIn.sevenDayAvg}
             checkInLoading={checkIn.loadingCheckIn}
             checkInLoadError={checkIn.checkInLoadError}
             deleteCheckInError={checkIn.deleteCheckInError}

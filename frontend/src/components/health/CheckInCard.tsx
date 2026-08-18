@@ -1,14 +1,23 @@
+import type { SevenDayWeightAverage } from "../../lib/checkIn";
+import { formatSevenDayAvgKg, formatWeightKg } from "../../lib/checkIn";
 import type { CheckIn } from "../../types/health";
 import { MealPhotoView } from "../nutrition/shared/MealPhotoView";
 
 interface CheckInCardProps {
   checkIn: CheckIn;
+  sevenDayAvg?: SevenDayWeightAverage | null;
   onEdit: () => void;
   onDelete: () => void;
   isDeleting?: boolean;
 }
 
-export function CheckInCard({ checkIn, onEdit, onDelete, isDeleting = false }: CheckInCardProps) {
+export function CheckInCard({
+  checkIn,
+  sevenDayAvg = null,
+  onEdit,
+  onDelete,
+  isDeleting = false,
+}: CheckInCardProps) {
   return (
     <section className="rounded-2xl border border-white/10 bg-surface-elevated/80 p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -18,8 +27,20 @@ export function CheckInCard({ checkIn, onEdit, onDelete, isDeleting = false }: C
           </p>
           {checkIn.weightKg !== null && (
             <p className="mt-2 text-3xl font-bold tracking-tight text-white">
-              {checkIn.weightKg}
+              {formatWeightKg(checkIn.weightKg)}
               <span className="ml-1.5 text-lg font-normal text-zinc-400">kg</span>
+            </p>
+          )}
+          {sevenDayAvg && (
+            <p className="mt-1 text-sm text-zinc-400">
+              7-day avg{" "}
+              <span className="font-semibold text-zinc-200">
+                {formatSevenDayAvgKg(sevenDayAvg.averageKg)} kg
+              </span>
+              <span className="text-zinc-500">
+                {" "}
+                · {sevenDayAvg.sampleCount} of 7 days
+              </span>
             </p>
           )}
         </div>
