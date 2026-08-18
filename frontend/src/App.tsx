@@ -55,8 +55,13 @@ function App() {
     (matched?.kind === "dashboard" && matched.section === "check-in") ||
     (matched?.kind === "flow" && matched.view.type === "check-in");
 
+  const loadSevenDayAvg =
+    matched?.kind === "dashboard" &&
+    matched.section === "check-in" &&
+    matched.period === "day";
+
   const nutrition = useNutritionData(selectedDate);
-  const checkIn = useCheckInData(selectedDate, checkInEnabled);
+  const checkIn = useCheckInData(selectedDate, checkInEnabled, loadSevenDayAvg);
   const estimate = useEstimateFlow();
 
   const changeDate = (dateKey: string) => {

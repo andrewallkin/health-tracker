@@ -1,5 +1,6 @@
 import type { CheckIn } from "../../types/health";
 import { useConfirm } from "../../context/useConfirm";
+import { formatSevenDayAvgKg, type SevenDayWeightAverage } from "../../lib/checkIn";
 import { addDays, formatDayHeader, isToday, toDateKey } from "../../lib/dates";
 import { PAGE_SHELL } from "../../lib/layout";
 import { isFutureDate } from "../../lib/logLabels";
@@ -9,6 +10,7 @@ import { CheckInCard } from "../health/CheckInCard";
 interface CheckInDayViewProps {
   selectedDate: string;
   checkIn: CheckIn | null;
+  sevenDayAvg?: SevenDayWeightAverage | null;
   checkInLoading?: boolean;
   checkInLoadError?: string | null;
   deleteCheckInError?: string | null;
@@ -23,6 +25,7 @@ interface CheckInDayViewProps {
 export function CheckInDayView({
   selectedDate,
   checkIn,
+  sevenDayAvg = null,
   checkInLoading = false,
   checkInLoadError = null,
   deleteCheckInError = null,
@@ -86,6 +89,7 @@ export function CheckInDayView({
           ) : checkIn ? (
             <CheckInCard
               checkIn={checkIn}
+              sevenDayAvg={sevenDayAvg}
               onEdit={onEditCheckIn}
               onDelete={() => {
                 void (async () => {
@@ -103,6 +107,18 @@ export function CheckInDayView({
           ) : (
             <div className="rounded-2xl border border-dashed border-white/10 bg-surface-elevated/50 px-4 py-16 text-center">
               <p className="mb-4 text-sm text-zinc-500">No check-in yet</p>
+              {sevenDayAvg && (
+                <p className="mb-4 text-sm text-zinc-400">
+                  7-day avg{" "}
+                  <span className="font-semibold text-zinc-200">
+                    {formatSevenDayAvgKg(sevenDayAvg.averageKg)} kg
+                  </span>
+                  <span className="text-zinc-500">
+                    {" "}
+                    · {sevenDayAvg.sampleCount} of 7 days
+                  </span>
+                </p>
+              )}
               <button
                 type="button"
                 onClick={onAddCheckIn}

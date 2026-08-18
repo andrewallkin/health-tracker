@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { fetchCheckInsInRange } from "../../lib/api";
-import { addDays, addWeeks, formatWeekRange, getWeekRange } from "../../lib/dates";
+import { formatSevenDayAvgKg, sevenDayWeightAverageAsOf } from "../../lib/checkIn";
+import { addDays, addWeeks, formatWeekRange, getWeekRange, toDateKey } from "../../lib/dates";
 import { PAGE_SHELL } from "../../lib/layout";
 import type { CheckIn } from "../../types/health";
 import { DateNav } from "../layout/DateNav";
+import { CheckInWeightChart } from "./CheckInWeightChart";
 
 interface CheckInWeekViewProps {
   anchorDate: string;
@@ -17,37 +19,45 @@ export function CheckInWeekView({
   onSelectDate,
 }: CheckInWeekViewProps) {
   const { start, end } = getWeekRange(anchorDate);
+  const rangeKey = `${start}:${end}`;
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
+  const [loadedRange, setLoadedRange] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchCheckInsInRange(start, end)
+    const from = addDays(start, -6);
+    fetchCheckInsInRange(from, end)
       .then((loaded) => {
-        if (!cancelled) setCheckIns(loaded);
+        if (!cancelled) {
+          setCheckIns(loaded);
+          setLoadedRange(rangeKey);
+        }
       })
       .catch(console.error);
     return () => {
       cancelled = true;
     };
-  }, [start, end]);
+  }, [start, end, rangeKey]);
 
+  const displayCheckIns = loadedRange === rangeKey ? checkIns : [];
+  const today = toDateKey();
   const weekDates = Array.from({ length: 7 }, (_, index) => addDays(start, index));
   const weightByDate = new Map(
-    checkIns
+    displayCheckIns
       .filter((checkIn) => checkIn.weightKg !== null)
       .map((checkIn) => [checkIn.checkInDate, checkIn.weightKg as number]),
   );
   const weightDays = weekDates.map((date) => ({
     date,
     weight: weightByDate.get(date) ?? null,
-    hasCheckIn: checkIns.some((checkIn) => checkIn.checkInDate === date),
+    hasCheckIn: displayCheckIns.some((checkIn) => checkIn.checkInDate === date),
+    avg: sevenDayWeightAverageAsOf(date, displayCheckIns, today),
   }));
   const loggedWeights = weightDays.filter((day) => day.weight !== null);
-  const weightValues = loggedWeights.map((day) => day.weight as number);
-  const minWeight = weightValues.length > 0 ? Math.min(...weightValues) : 0;
-  const maxWeight = weightValues.length > 0 ? Math.max(...weightValues) : 100;
-  const weightRange = Math.max(maxWeight - minWeight, 1);
   const checkInDays = weightDays.filter((day) => day.hasCheckIn).length;
+  const headlineDate = end > today ? today : end;
+  const sundayAvg =
+    start > today ? null : sevenDayWeightAverageAsOf(headlineDate, displayCheckIns, today);
 
   return (
     <div className={PAGE_SHELL}>
@@ -58,52 +68,33 @@ export function CheckInWeekView({
         onNext={() => onAnchorChange(addWeeks(anchorDate, 1))}
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 rounded-2xl border border-white/10 bg-surface-elevated/80 p-4">
+      <div className="mb-5 grid grid-cols-3 gap-3 rounded-2xl border border-white/10 bg-surface-elevated/80 p-4">
         <Stat label="Days logged" value={checkInDays} accent="text-teal-400" />
         <Stat
           label="Weights logged"
           value={loggedWeights.length}
           accent="text-sky-400"
         />
+        <Stat
+          label="7-day avg"
+          value={sundayAvg ? `${formatSevenDayAvgKg(sundayAvg.averageKg)} kg` : "—"}
+          accent="text-amber-400"
+        />
       </div>
 
-      {loggedWeights.length > 0 ? (
+      {loggedWeights.length > 0 || weightDays.some((day) => day.avg) ? (
         <div className="rounded-2xl border border-white/10 bg-surface-elevated/80 p-4">
-          <p className="mb-4 flex items-center gap-1.5 text-sm font-medium text-zinc-300">
-            <span>⚖️</span> Weight
-          </p>
-          <div className="grid grid-cols-7 gap-2">
-            {weightDays.map((day) => {
-              const label = new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, {
+          <CheckInWeightChart
+            days={weightDays.map((day) => ({
+              date: day.date,
+              weekday: new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, {
                 weekday: "narrow",
-              });
-              const ratio =
-                day.weight !== null ? (day.weight - minWeight) / weightRange : 0;
-              return (
-                <button
-                  key={day.date}
-                  type="button"
-                  onClick={() => onSelectDate(day.date)}
-                  className="flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-white/4 px-1 py-2 transition hover:border-white/20"
-                >
-                  <span className="text-[10px] font-semibold uppercase text-zinc-500">{label}</span>
-                  <div className="flex h-16 w-full items-end justify-center rounded-lg bg-white/5 px-1 pb-1">
-                    {day.weight !== null ? (
-                      <div
-                        className="w-full max-w-[20px] rounded-t bg-teal-400/80"
-                        style={{ height: `${Math.max(ratio * 100, 12)}%` }}
-                      />
-                    ) : (
-                      <span className="text-[10px] text-zinc-600">—</span>
-                    )}
-                  </div>
-                  <span className="text-[10px] font-medium text-zinc-300">
-                    {day.weight !== null ? `${day.weight}` : "—"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+              }),
+              weight: day.weight,
+              avg: day.avg,
+            }))}
+            onSelectDate={onSelectDate}
+          />
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
@@ -126,7 +117,7 @@ function Stat({
   return (
     <div>
       <p className={`text-[10px] font-bold uppercase tracking-wider ${accent}`}>{label}</p>
-      <p className="mt-1 text-lg font-bold text-white">{value}</p>
+      <p className="mt-1 text-lg font-bold whitespace-nowrap tabular-nums text-white">{value}</p>
     </div>
   );
 }

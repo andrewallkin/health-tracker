@@ -1,3 +1,4 @@
+import { addDays } from "./dates";
 import { parseLocaleNumber } from "./numericInput";
 
 const MIN_WEIGHT_KG = 30;
@@ -22,6 +23,46 @@ export function parseWeightKg(weightInput: string): number | null {
     return null;
   }
   return weight;
+}
+
+export interface SevenDayWeightAverage {
+  averageKg: number;
+  sampleCount: number;
+}
+
+export function sevenDayWeightAverage(
+  dateKey: string,
+  checkIns: Array<{ checkInDate: string; weightKg: number | null }>,
+): SevenDayWeightAverage | null {
+  const windowDates = Array.from({ length: 7 }, (_, index) => addDays(dateKey, index - 6));
+  const weightByDate = new Map<string, number>();
+  for (const checkIn of checkIns) {
+    if (checkIn.weightKg === null) continue;
+    weightByDate.set(checkIn.checkInDate, checkIn.weightKg);
+  }
+  const weights = windowDates
+    .map((date) => weightByDate.get(date))
+    .filter((weight): weight is number => weight !== undefined);
+  if (weights.length === 0) return null;
+  const sum = weights.reduce((total, weight) => total + weight, 0);
+  return { averageKg: sum / weights.length, sampleCount: weights.length };
+}
+
+export function formatWeightKg(weightKg: number): string {
+  return weightKg.toFixed(2);
+}
+
+export function formatSevenDayAvgKg(averageKg: number): string {
+  return formatWeightKg(averageKg);
+}
+
+export function sevenDayWeightAverageAsOf(
+  dateKey: string,
+  checkIns: Array<{ checkInDate: string; weightKg: number | null }>,
+  today: string,
+): SevenDayWeightAverage | null {
+  if (dateKey > today) return null;
+  return sevenDayWeightAverage(dateKey, checkIns);
 }
 
 export { MAX_PHOTOS, MIN_WEIGHT_KG, MAX_WEIGHT_KG };

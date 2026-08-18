@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { deleteCheckIn, fetchCheckInForDate, upsertCheckIn } from "../lib/api";
+import { deleteCheckIn, fetchCheckInForDate, fetchCheckInsInRange, upsertCheckIn } from "../lib/api";
+import { addDays } from "../lib/dates";
+import { sevenDayWeightAverage, type SevenDayWeightAverage } from "../lib/checkIn";
 import type { CheckIn } from "../types/health";
 
-export function useCheckInData(selectedDate: string, enabled: boolean) {
+export function useCheckInData(
+  selectedDate: string,
+  enabled: boolean,
+  loadSevenDayAvg = false,
+) {
   const [checkIn, setCheckIn] = useState<CheckIn | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [deleteCheckInError, setDeleteCheckInError] = useState<string | null>(null);
   const [checkInLoadError, setCheckInLoadError] = useState<string | null>(null);
   const [isDeletingCheckIn, setIsDeletingCheckIn] = useState(false);
+  const [sevenDayAvgResult, setSevenDayAvgResult] = useState<{
+    key: string;
+    value: SevenDayWeightAverage | null;
+  } | null>(null);
 
   const fetchKey = enabled ? `${selectedDate}:${reloadKey}` : null;
   const loadingCheckIn = fetchKey !== null && loadedKey !== fetchKey;
@@ -44,6 +54,37 @@ export function useCheckInData(selectedDate: string, enabled: boolean) {
       cancelled = true;
     };
   }, [fetchKey, selectedDate]);
+
+  useEffect(() => {
+    if (!fetchKey || !loadSevenDayAvg) return;
+
+    let cancelled = false;
+    const from = addDays(selectedDate, -6);
+
+    fetchCheckInsInRange(from, selectedDate)
+      .then((loaded) => {
+        if (!cancelled) {
+          setSevenDayAvgResult({
+            key: fetchKey,
+            value: sevenDayWeightAverage(selectedDate, loaded),
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSevenDayAvgResult({ key: fetchKey, value: null });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchKey, loadSevenDayAvg, selectedDate]);
+
+  const sevenDayAvg =
+    loadSevenDayAvg && fetchKey && sevenDayAvgResult?.key === fetchKey
+      ? sevenDayAvgResult.value
+      : null;
 
   const handleSaveCheckIn = async (payload: {
     weightKg: number | null;
@@ -80,6 +121,7 @@ export function useCheckInData(selectedDate: string, enabled: boolean) {
     checkInLoadError,
     deleteCheckInError,
     isDeletingCheckIn,
+    sevenDayAvg,
     handleSaveCheckIn,
     handleDeleteCheckIn,
     dismissDeleteCheckInError: () => setDeleteCheckInError(null),
