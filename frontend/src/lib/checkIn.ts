@@ -65,4 +65,17 @@ export function sevenDayWeightAverageAsOf(
   return sevenDayWeightAverage(dateKey, checkIns);
 }
 
+export function checkInWeekFetchRange(
+  weekStart: string,
+  weekEnd: string,
+  today: string,
+): { from: string; to: string } {
+  const calendarFrom = addDays(weekStart, -6);
+  const rollingFrom = addDays(today, -12);
+  return {
+    from: calendarFrom < rollingFrom ? calendarFrom : rollingFrom,
+    to: weekEnd > today ? weekEnd : today,
+  };
+}
+
 export { MAX_PHOTOS, MIN_WEIGHT_KG, MAX_WEIGHT_KG };

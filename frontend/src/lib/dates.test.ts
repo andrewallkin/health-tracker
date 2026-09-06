@@ -13,6 +13,7 @@ import {
   monthFromDateKey,
   parseDateKey,
   toDateKey,
+  trailingSevenDayDates,
   weekdayShort,
 } from "./dates";
 
@@ -102,5 +103,20 @@ describe("isToday", () => {
   it("matches current date key", () => {
     expect(isToday(toDateKey())).toBe(true);
     expect(isToday("2000-01-01")).toBe(false);
+  });
+});
+
+describe("trailingSevenDayDates", () => {
+  it("returns today minus 6 through today", () => {
+    // Tuesday 1 Sep 2026 → last Wednesday through Tuesday
+    expect(trailingSevenDayDates("2026-09-01")).toEqual([
+      "2026-08-26",
+      "2026-08-27",
+      "2026-08-28",
+      "2026-08-29",
+      "2026-08-30",
+      "2026-08-31",
+      "2026-09-01",
+    ]);
   });
 });
