@@ -14,6 +14,7 @@ export interface WeightChartDay {
 interface CheckInWeightChartProps {
   days: WeightChartDay[];
   onSelectDate: (dateKey: string) => void;
+  title?: string;
 }
 
 const WIDTH = 320;
@@ -23,7 +24,11 @@ const PAD_RIGHT = 12;
 const PAD_TOP = 12;
 const PAD_BOTTOM = 10;
 
-export function CheckInWeightChart({ days, onSelectDate }: CheckInWeightChartProps) {
+export function CheckInWeightChart({
+  days,
+  onSelectDate,
+  title = "Weight",
+}: CheckInWeightChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   const values = days.flatMap((day) => {
@@ -79,7 +84,7 @@ export function CheckInWeightChart({ days, onSelectDate }: CheckInWeightChartPro
     <div>
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="flex items-center gap-1.5 text-sm font-medium text-zinc-300">
-          <span>⚖️</span> Weight
+          <span>⚖️</span> {title}
         </p>
         <div className="flex items-center gap-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
           <span className="flex items-center gap-1.5">
@@ -113,7 +118,7 @@ export function CheckInWeightChart({ days, onSelectDate }: CheckInWeightChartPro
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           className="h-40 w-full"
           role="img"
-          aria-label="Weekly weight and 7-day average"
+          aria-label={`${title} weight and 7-day average`}
           onPointerMove={(event) => {
             setHoverIndex(indexFromClientX(event.clientX, event.currentTarget));
           }}

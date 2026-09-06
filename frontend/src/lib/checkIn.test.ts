@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkInWeekFetchRange,
   formatSevenDayAvgKg,
   formatWeightKg,
   isCheckInValid,
@@ -119,6 +120,29 @@ describe("formatSevenDayAvgKg", () => {
     expect(formatSevenDayAvgKg(83)).toBe("83.00");
     expect(formatSevenDayAvgKg(81.5)).toBe("81.50");
     expect(formatWeightKg(82.7)).toBe("82.70");
+  });
+});
+
+describe("checkInWeekFetchRange", () => {
+  it("extends back for rolling 7-day averages and forward to today when viewing a past week", () => {
+    expect(checkInWeekFetchRange("2026-08-17", "2026-08-23", "2026-09-01")).toEqual({
+      from: "2026-08-11",
+      to: "2026-09-01",
+    });
+  });
+
+  it("uses week start minus 6 when that is earlier than the rolling lookback", () => {
+    expect(checkInWeekFetchRange("2026-08-10", "2026-08-16", "2026-09-01")).toEqual({
+      from: "2026-08-04",
+      to: "2026-09-01",
+    });
+  });
+
+  it("keeps through Sunday when the viewed week is still in progress", () => {
+    expect(checkInWeekFetchRange("2026-08-31", "2026-09-06", "2026-09-01")).toEqual({
+      from: "2026-08-20",
+      to: "2026-09-06",
+    });
   });
 });
 

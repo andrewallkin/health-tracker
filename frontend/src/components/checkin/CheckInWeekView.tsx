@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { fetchCheckInsInRange } from "../../lib/api";
-import { formatSevenDayAvgKg, sevenDayWeightAverageAsOf } from "../../lib/checkIn";
-import { addDays, addWeeks, formatWeekRange, getWeekRange, toDateKey } from "../../lib/dates";
+import {
+  checkInWeekFetchRange,
+  formatSevenDayAvgKg,
+  sevenDayWeightAverageAsOf,
+} from "../../lib/checkIn";
+import { addWeeks, formatWeekRange, getWeekRange, toDateKey, trailingSevenDayDates } from "../../lib/dates";
 import { PAGE_SHELL } from "../../lib/layout";
 import type { CheckIn } from "../../types/health";
 import { DateNav } from "../layout/DateNav";
-import { CheckInWeightChart } from "./CheckInWeightChart";
+import { CheckInWeightChart, type WeightChartDay } from "./CheckInWeightChart";
 
 interface CheckInWeekViewProps {
   anchorDate: string;
@@ -18,15 +22,16 @@ export function CheckInWeekView({
   onAnchorChange,
   onSelectDate,
 }: CheckInWeekViewProps) {
-  const { start, end } = getWeekRange(anchorDate);
-  const rangeKey = `${start}:${end}`;
+  const { start, end, dates: weekDates } = getWeekRange(anchorDate);
+  const today = toDateKey();
+  const { from, to } = checkInWeekFetchRange(start, end, today);
+  const rangeKey = `${from}:${to}`;
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [loadedRange, setLoadedRange] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const from = addDays(start, -6);
-    fetchCheckInsInRange(from, end)
+    fetchCheckInsInRange(from, to)
       .then((loaded) => {
         if (!cancelled) {
           setCheckIns(loaded);
@@ -37,24 +42,16 @@ export function CheckInWeekView({
     return () => {
       cancelled = true;
     };
-  }, [start, end, rangeKey]);
+  }, [from, to, rangeKey]);
 
   const displayCheckIns = loadedRange === rangeKey ? checkIns : [];
-  const today = toDateKey();
-  const weekDates = Array.from({ length: 7 }, (_, index) => addDays(start, index));
-  const weightByDate = new Map(
-    displayCheckIns
-      .filter((checkIn) => checkIn.weightKg !== null)
-      .map((checkIn) => [checkIn.checkInDate, checkIn.weightKg as number]),
-  );
-  const weightDays = weekDates.map((date) => ({
-    date,
-    weight: weightByDate.get(date) ?? null,
-    hasCheckIn: displayCheckIns.some((checkIn) => checkIn.checkInDate === date),
-    avg: sevenDayWeightAverageAsOf(date, displayCheckIns, today),
-  }));
+  const weightDays = toWeightChartDays(weekDates, displayCheckIns, today);
+  const rollingDays = toWeightChartDays(trailingSevenDayDates(today), displayCheckIns, today);
   const loggedWeights = weightDays.filter((day) => day.weight !== null);
-  const checkInDays = weightDays.filter((day) => day.hasCheckIn).length;
+  const rollingLoggedWeights = rollingDays.filter((day) => day.weight !== null);
+  const checkInDays = weekDates.filter((date) =>
+    displayCheckIns.some((checkIn) => checkIn.checkInDate === date),
+  ).length;
   const headlineDate = end > today ? today : end;
   const sundayAvg =
     start > today ? null : sevenDayWeightAverageAsOf(headlineDate, displayCheckIns, today);
@@ -82,25 +79,70 @@ export function CheckInWeekView({
         />
       </div>
 
-      {loggedWeights.length > 0 || weightDays.some((day) => day.avg) ? (
-        <div className="rounded-2xl border border-white/10 bg-surface-elevated/80 p-4">
-          <CheckInWeightChart
-            days={weightDays.map((day) => ({
-              date: day.date,
-              weekday: new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, {
-                weekday: "narrow",
-              }),
-              weight: day.weight,
-              avg: day.avg,
-            }))}
-            onSelectDate={onSelectDate}
-          />
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
-          <p className="text-sm text-zinc-500">No weights logged this week</p>
-        </div>
-      )}
+      <div className="space-y-4">
+        <WeightChartCard
+          title="This week"
+          days={weightDays}
+          hasWeights={loggedWeights.length > 0 || weightDays.some((day) => day.avg)}
+          emptyLabel="No weights logged this week"
+          onSelectDate={onSelectDate}
+        />
+        <WeightChartCard
+          title="Last 7 days"
+          days={rollingDays}
+          hasWeights={rollingLoggedWeights.length > 0 || rollingDays.some((day) => day.avg)}
+          emptyLabel="No weights logged in the last 7 days"
+          onSelectDate={onSelectDate}
+        />
+      </div>
+    </div>
+  );
+}
+
+function toWeightChartDays(
+  dates: string[],
+  checkIns: CheckIn[],
+  today: string,
+): WeightChartDay[] {
+  const weightByDate = new Map(
+    checkIns
+      .filter((checkIn) => checkIn.weightKg !== null)
+      .map((checkIn) => [checkIn.checkInDate, checkIn.weightKg as number]),
+  );
+  return dates.map((date) => ({
+    date,
+    weekday: new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
+      weekday: "narrow",
+    }),
+    weight: weightByDate.get(date) ?? null,
+    avg: sevenDayWeightAverageAsOf(date, checkIns, today),
+  }));
+}
+
+function WeightChartCard({
+  title,
+  days,
+  hasWeights,
+  emptyLabel,
+  onSelectDate,
+}: {
+  title: string;
+  days: WeightChartDay[];
+  hasWeights: boolean;
+  emptyLabel: string;
+  onSelectDate: (dateKey: string) => void;
+}) {
+  if (!hasWeights) {
+    return (
+      <div className="rounded-2xl border border-dashed border-white/10 px-4 py-16 text-center">
+        <p className="text-sm text-zinc-500">{emptyLabel}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-surface-elevated/80 p-4">
+      <CheckInWeightChart days={days} title={title} onSelectDate={onSelectDate} />
     </div>
   );
 }

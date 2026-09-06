@@ -16,6 +16,11 @@ export function addDays(dateKey: string, delta: number): string {
   return toDateKey(date);
 }
 
+/** Inclusive window of seven days ending on `asOf`. */
+export function trailingSevenDayDates(asOf: string): string[] {
+  return Array.from({ length: 7 }, (_, index) => addDays(asOf, index - 6));
+}
+
 export function isToday(dateKey: string): boolean {
   return dateKey === toDateKey();
 }
