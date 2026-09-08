@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { addDays } from "./dates";
 import {
+  checkInDayDeltaFetchRange,
+  checkInMonthFetchRange,
   checkInWeekFetchRange,
+  clampDatesFrom,
+  firstWeightedDate,
   formatSevenDayAvgKg,
+  formatSignedKg,
   formatWeightKg,
   isCheckInValid,
   parseWeightKg,
+  rollingAverageDeltas,
   sevenDayWeightAverage,
   sevenDayWeightAverageAsOf,
 } from "./checkIn";
@@ -158,5 +165,119 @@ describe("sevenDayWeightAverageAsOf", () => {
       averageKg: 83,
       sampleCount: 2,
     });
+  });
+});
+
+describe("firstWeightedDate", () => {
+  it("returns the earliest date with a non-null weight", () => {
+    expect(
+      firstWeightedDate([
+        row("2026-09-04", null),
+        row("2026-09-06", 82),
+        row("2026-09-02", 80),
+      ]),
+    ).toBe("2026-09-02");
+  });
+
+  it("returns null when there are no weights", () => {
+    expect(firstWeightedDate([row("2026-09-02", null)])).toBeNull();
+  });
+});
+
+describe("clampDatesFrom", () => {
+  it("drops dates before earliest and keeps the rest", () => {
+    expect(clampDatesFrom(["2026-09-01", "2026-09-02", "2026-09-03"], "2026-09-02")).toEqual([
+      "2026-09-02",
+      "2026-09-03",
+    ]);
+  });
+
+  it("returns the original list when earliest is null", () => {
+    expect(clampDatesFrom(["2026-09-01"], null)).toEqual(["2026-09-01"]);
+  });
+});
+
+describe("checkInMonthFetchRange", () => {
+  it("extends back for rolling 30-day averages and forward to today when viewing a past month", () => {
+    expect(checkInMonthFetchRange("2026-07-01", "2026-07-31", "2026-09-08")).toEqual({
+      from: "2026-06-25",
+      to: "2026-09-08",
+    });
+  });
+
+  it("uses today minus 35 when that is earlier than month start minus 6", () => {
+    expect(checkInMonthFetchRange("2026-09-01", "2026-09-30", "2026-09-08")).toEqual({
+      from: "2026-08-04",
+      to: "2026-09-30",
+    });
+  });
+});
+
+describe("checkInDayDeltaFetchRange", () => {
+  it("looks back 36 days so a 30-day delta has a 7-day average window", () => {
+    expect(checkInDayDeltaFetchRange("2026-09-08")).toEqual({
+      from: "2026-08-03",
+      to: "2026-09-08",
+    });
+  });
+});
+
+describe("formatSignedKg", () => {
+  it("signs positive, negative, and zero values", () => {
+    expect(formatSignedKg(0.32)).toBe("+0.32 kg");
+    expect(formatSignedKg(-0.32)).toBe("−0.32 kg");
+    expect(formatSignedKg(0)).toBe("0.00 kg");
+  });
+});
+
+describe("rollingAverageDeltas", () => {
+  const today = "2026-09-08";
+  const daily = Array.from({ length: 40 }, (_, i) =>
+    row(addDays(today, i - 39), 80 + i * 0.1),
+  );
+
+  it("uses full period labels when history covers the window", () => {
+    const deltas = rollingAverageDeltas(today, daily, today);
+    expect(deltas[0]?.label).toBe("1 day");
+    expect(deltas[1]?.label).toBe("7 days");
+    expect(deltas[2]?.label).toBe("14 days");
+    expect(deltas[3]?.label).toBe("1 month");
+    expect(deltas[0]?.deltaKg).toBeCloseTo(
+      sevenDayWeightAverage(today, daily)!.averageKg -
+        sevenDayWeightAverage(addDays(today, -1), daily)!.averageKg,
+    );
+    expect(deltas[3]?.startDate).toBe(addDays(today, -30));
+  });
+
+  it("clamps to the first weighted day and relabels the span", () => {
+    const short = [
+      row("2026-08-27", 84),
+      row("2026-09-01", 83),
+      row("2026-09-08", 82),
+    ];
+    const deltas = rollingAverageDeltas("2026-09-08", short, "2026-09-08");
+    expect(deltas[3]?.label).toBe("12 days");
+    expect(deltas[3]?.startDate).toBe("2026-08-27");
+    expect(deltas[3]?.deltaKg).toBeCloseTo(
+      sevenDayWeightAverage("2026-09-08", short)!.averageKg -
+        sevenDayWeightAverage("2026-08-27", short)!.averageKg,
+    );
+  });
+
+  it("returns null for a period when start would be the as-of date", () => {
+    const oneDay = [row("2026-09-08", 82)];
+    const deltas = rollingAverageDeltas("2026-09-08", oneDay, "2026-09-08");
+    expect(deltas.every((delta) => delta === null)).toBe(true);
+  });
+
+  it("keeps unclamped labels for shorter periods", () => {
+    const short = [
+      row("2026-08-27", 84),
+      row("2026-09-01", 83),
+      row("2026-09-08", 82),
+    ];
+    const deltas = rollingAverageDeltas("2026-09-08", short, "2026-09-08");
+    expect(deltas[0]?.label).toBe("1 day");
+    expect(deltas[3]?.label).toBe("12 days");
   });
 });

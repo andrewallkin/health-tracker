@@ -1,15 +1,10 @@
 import { useState } from "react";
 
-import { formatSevenDayAvgKg, formatWeightKg, type SevenDayWeightAverage } from "../../lib/checkIn";
+import { formatSevenDayAvgKg, formatWeightKg, type WeightChartDay } from "../../lib/checkIn";
 import { formatShortDate } from "../../lib/dates";
-import { seriesPath } from "../../lib/weightChart";
+import { seriesPath, sparseTickIndices } from "../../lib/weightChart";
 
-export interface WeightChartDay {
-  date: string;
-  weekday: string;
-  weight: number | null;
-  avg: SevenDayWeightAverage | null;
-}
+export type { WeightChartDay } from "../../lib/checkIn";
 
 interface CheckInWeightChartProps {
   days: WeightChartDay[];
@@ -22,7 +17,8 @@ const HEIGHT = 148;
 const PAD_LEFT = 36;
 const PAD_RIGHT = 12;
 const PAD_TOP = 12;
-const PAD_BOTTOM = 10;
+const PAD_BOTTOM_DEFAULT = 10;
+const PAD_BOTTOM_COMPACT = 22;
 
 export function CheckInWeightChart({
   days,
@@ -30,6 +26,9 @@ export function CheckInWeightChart({
   title = "Weight",
 }: CheckInWeightChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  const compact = days.length > 7;
+  const padBottom = compact ? PAD_BOTTOM_COMPACT : PAD_BOTTOM_DEFAULT;
 
   const values = days.flatMap((day) => {
     const points: number[] = [];
@@ -45,7 +44,7 @@ export function CheckInWeightChart({
   const yRange = yMax - yMin || 1;
 
   const innerWidth = WIDTH - PAD_LEFT - PAD_RIGHT;
-  const innerHeight = HEIGHT - PAD_TOP - PAD_BOTTOM;
+  const innerHeight = HEIGHT - PAD_TOP - padBottom;
   const lastIndex = Math.max(days.length - 1, 1);
 
   const xOf = (index: number) => PAD_LEFT + (index / lastIndex) * innerWidth;
@@ -64,6 +63,7 @@ export function CheckInWeightChart({
 
   const ticks = [yMax, (yMin + yMax) / 2, yMin];
   const hovered = hoverIndex !== null ? days[hoverIndex] : null;
+  const sparseTicks = compact ? sparseTickIndices(days.length) : [];
 
   const indexFromClientX = (clientX: number, svg: SVGSVGElement) => {
     const rect = svg.getBoundingClientRect();
@@ -123,6 +123,10 @@ export function CheckInWeightChart({
             setHoverIndex(indexFromClientX(event.clientX, event.currentTarget));
           }}
           onPointerLeave={() => setHoverIndex(null)}
+          onPointerUp={(event) => {
+            const index = indexFromClientX(event.clientX, event.currentTarget);
+            onSelectDate(days[index].date);
+          }}
         >
           {ticks.map((tick) => (
             <g key={tick}>
@@ -151,7 +155,7 @@ export function CheckInWeightChart({
               x1={xOf(hoverIndex)}
               x2={xOf(hoverIndex)}
               y1={PAD_TOP}
-              y2={HEIGHT - PAD_BOTTOM}
+              y2={HEIGHT - padBottom}
               stroke="rgba(255,255,255,0.18)"
               strokeWidth="1"
             />
@@ -203,24 +207,40 @@ export function CheckInWeightChart({
               />
             ) : null,
           )}
+
+          {compact &&
+            sparseTicks.map((index) => (
+              <text
+                key={days[index].date}
+                x={xOf(index)}
+                y={HEIGHT - 4}
+                textAnchor="middle"
+                fill="#71717a"
+                fontSize="9"
+              >
+                {formatShortDate(days[index].date)}
+              </text>
+            ))}
         </svg>
       </div>
 
-      <div className="mt-1 grid grid-cols-7 gap-1">
-        {days.map((day) => (
-          <button
-            key={day.date}
-            type="button"
-            onClick={() => onSelectDate(day.date)}
-            className="rounded-lg px-0.5 py-1.5 text-center transition hover:bg-white/5"
-          >
-            <p className="text-[10px] font-semibold uppercase text-zinc-500">{day.weekday}</p>
-            <p className="mt-0.5 text-[11px] font-medium text-zinc-200">
-              {day.weight !== null ? formatWeightKg(day.weight) : "—"}
-            </p>
-          </button>
-        ))}
-      </div>
+      {!compact && (
+        <div className="mt-1 grid grid-cols-7 gap-1">
+          {days.map((day) => (
+            <button
+              key={day.date}
+              type="button"
+              onClick={() => onSelectDate(day.date)}
+              className="rounded-lg px-0.5 py-1.5 text-center transition hover:bg-white/5"
+            >
+              <p className="text-[10px] font-semibold uppercase text-zinc-500">{day.weekday}</p>
+              <p className="mt-0.5 text-[11px] font-medium text-zinc-200">
+                {day.weight !== null ? formatWeightKg(day.weight) : "—"}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,9 @@ import {
   addDays,
   addMonths,
   addWeeks,
+  daysBetween,
   formatWeekRange,
+  getMonthDates,
   getMonthGrid,
   getWeekDates,
   getWeekRange,
@@ -13,6 +15,7 @@ import {
   monthFromDateKey,
   parseDateKey,
   toDateKey,
+  trailingDayDates,
   trailingSevenDayDates,
   weekdayShort,
 } from "./dates";
@@ -118,5 +121,43 @@ describe("trailingSevenDayDates", () => {
       "2026-08-31",
       "2026-09-01",
     ]);
+  });
+});
+
+describe("trailingDayDates", () => {
+  it("returns an inclusive window ending on asOf", () => {
+    expect(trailingDayDates("2026-09-08", 3)).toEqual([
+      "2026-09-06",
+      "2026-09-07",
+      "2026-09-08",
+    ]);
+  });
+
+  it("returns 30 days for a month-sized window", () => {
+    const days = trailingDayDates("2026-09-08", 30);
+    expect(days).toHaveLength(30);
+    expect(days[0]).toBe("2026-08-10");
+    expect(days[29]).toBe("2026-09-08");
+  });
+});
+
+describe("getMonthDates", () => {
+  it("returns every in-month day and no padding", () => {
+    const days = getMonthDates(2026, 8); // September
+    expect(days[0]).toBe("2026-09-01");
+    expect(days[days.length - 1]).toBe("2026-09-30");
+    expect(days).toHaveLength(30);
+  });
+
+  it("handles February in a non-leap year", () => {
+    expect(getMonthDates(2026, 1)).toHaveLength(28);
+  });
+});
+
+describe("daysBetween", () => {
+  it("counts whole days from start to end", () => {
+    expect(daysBetween("2026-09-08", "2026-09-08")).toBe(0);
+    expect(daysBetween("2026-09-07", "2026-09-08")).toBe(1);
+    expect(daysBetween("2026-08-09", "2026-09-08")).toBe(30);
   });
 });

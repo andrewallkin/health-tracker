@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { deleteCheckIn, fetchCheckInForDate, fetchCheckInsInRange, upsertCheckIn } from "../lib/api";
-import { addDays } from "../lib/dates";
-import { sevenDayWeightAverage, type SevenDayWeightAverage } from "../lib/checkIn";
+import {
+  checkInDayDeltaFetchRange,
+  rollingAverageDeltas,
+  sevenDayWeightAverage,
+  type RollingAverageDelta,
+  type SevenDayWeightAverage,
+} from "../lib/checkIn";
+import { toDateKey } from "../lib/dates";
 import type { CheckIn } from "../types/health";
 
 export function useCheckInData(
@@ -19,6 +25,7 @@ export function useCheckInData(
   const [sevenDayAvgResult, setSevenDayAvgResult] = useState<{
     key: string;
     value: SevenDayWeightAverage | null;
+    rollingDeltas: Array<RollingAverageDelta | null>;
   } | null>(null);
 
   const fetchKey = enabled ? `${selectedDate}:${reloadKey}` : null;
@@ -59,20 +66,25 @@ export function useCheckInData(
     if (!fetchKey || !loadSevenDayAvg) return;
 
     let cancelled = false;
-    const from = addDays(selectedDate, -6);
+    const { from, to } = checkInDayDeltaFetchRange(selectedDate);
 
-    fetchCheckInsInRange(from, selectedDate)
+    fetchCheckInsInRange(from, to)
       .then((loaded) => {
         if (!cancelled) {
           setSevenDayAvgResult({
             key: fetchKey,
             value: sevenDayWeightAverage(selectedDate, loaded),
+            rollingDeltas: rollingAverageDeltas(selectedDate, loaded, toDateKey()),
           });
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setSevenDayAvgResult({ key: fetchKey, value: null });
+          setSevenDayAvgResult({
+            key: fetchKey,
+            value: null,
+            rollingDeltas: [null, null, null, null],
+          });
         }
       });
 
@@ -85,6 +97,11 @@ export function useCheckInData(
     loadSevenDayAvg && fetchKey && sevenDayAvgResult?.key === fetchKey
       ? sevenDayAvgResult.value
       : null;
+
+  const rollingDeltas: Array<RollingAverageDelta | null> =
+    loadSevenDayAvg && fetchKey && sevenDayAvgResult?.key === fetchKey
+      ? sevenDayAvgResult.rollingDeltas
+      : [null, null, null, null];
 
   const handleSaveCheckIn = async (payload: {
     weightKg: number | null;
@@ -122,6 +139,7 @@ export function useCheckInData(
     deleteCheckInError,
     isDeletingCheckIn,
     sevenDayAvg,
+    rollingDeltas,
     handleSaveCheckIn,
     handleDeleteCheckIn,
     dismissDeleteCheckInError: () => setDeleteCheckInError(null),

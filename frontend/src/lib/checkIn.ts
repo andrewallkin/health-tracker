@@ -1,4 +1,4 @@
-import { addDays } from "./dates";
+import { addDays, daysBetween } from "./dates";
 import { parseLocaleNumber } from "./numericInput";
 
 const MIN_WEIGHT_KG = 30;
@@ -76,6 +76,124 @@ export function checkInWeekFetchRange(
     from: calendarFrom < rollingFrom ? calendarFrom : rollingFrom,
     to: weekEnd > today ? weekEnd : today,
   };
+}
+
+export interface WeightChartDay {
+  date: string;
+  weekday: string;
+  weight: number | null;
+  avg: SevenDayWeightAverage | null;
+}
+
+export function firstWeightedDate(
+  checkIns: Array<{ checkInDate: string; weightKg: number | null }>,
+): string | null {
+  let earliest: string | null = null;
+  for (const checkIn of checkIns) {
+    if (checkIn.weightKg === null) continue;
+    if (earliest === null || checkIn.checkInDate < earliest) {
+      earliest = checkIn.checkInDate;
+    }
+  }
+  return earliest;
+}
+
+export function clampDatesFrom(dates: string[], earliest: string | null): string[] {
+  if (earliest === null) return dates;
+  return dates.filter((date) => date >= earliest);
+}
+
+export function toWeightChartDays(
+  dates: string[],
+  checkIns: Array<{ checkInDate: string; weightKg: number | null }>,
+  today: string,
+): WeightChartDay[] {
+  const weightByDate = new Map<string, number | null>();
+  for (const checkIn of checkIns) {
+    weightByDate.set(checkIn.checkInDate, checkIn.weightKg);
+  }
+  return dates.map((date) => ({
+    date,
+    weekday: new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: "narrow" }),
+    weight: weightByDate.get(date) ?? null,
+    avg: sevenDayWeightAverageAsOf(date, checkIns, today),
+  }));
+}
+
+export function checkInMonthFetchRange(
+  monthStart: string,
+  monthEnd: string,
+  today: string,
+): { from: string; to: string } {
+  const monthLookback = addDays(monthStart, -6);
+  const rollingLookback = addDays(today, -35);
+  return {
+    from: monthLookback < rollingLookback ? monthLookback : rollingLookback,
+    to: monthEnd > today ? monthEnd : today,
+  };
+}
+
+export function checkInDayDeltaFetchRange(asOf: string): { from: string; to: string } {
+  return { from: addDays(asOf, -36), to: asOf };
+}
+
+export const ROLLING_AVG_DELTA_PERIODS = [
+  { periodDays: 1, fullLabel: "1 day" },
+  { periodDays: 7, fullLabel: "7 days" },
+  { periodDays: 14, fullLabel: "14 days" },
+  { periodDays: 30, fullLabel: "1 month" },
+] as const;
+
+export interface RollingAverageDelta {
+  periodDays: number;
+  label: string;
+  deltaKg: number;
+  startDate: string;
+  endDate: string;
+}
+
+export function rollingAverageDeltas(
+  asOf: string,
+  checkIns: Array<{ checkInDate: string; weightKg: number | null }>,
+  today: string,
+): Array<RollingAverageDelta | null> {
+  const endAvg = sevenDayWeightAverageAsOf(asOf, checkIns, today);
+  const firstDate = firstWeightedDate(checkIns);
+
+  return ROLLING_AVG_DELTA_PERIODS.map(({ periodDays, fullLabel }) => {
+    if (endAvg === null) return null;
+
+    const intendedStart = addDays(asOf, -periodDays);
+    const actualStart =
+      intendedStart > (firstDate ?? intendedStart) ? intendedStart : (firstDate ?? intendedStart);
+
+    if (actualStart >= asOf) return null;
+
+    const startAvg = sevenDayWeightAverageAsOf(actualStart, checkIns, today);
+    if (startAvg === null) return null;
+
+    const spanDays = daysBetween(actualStart, asOf);
+    const label =
+      actualStart === intendedStart
+        ? fullLabel
+        : spanDays === 1
+          ? "1 day"
+          : `${spanDays} days`;
+
+    return {
+      periodDays,
+      label,
+      deltaKg: endAvg.averageKg - startAvg.averageKg,
+      startDate: actualStart,
+      endDate: asOf,
+    };
+  });
+}
+
+export function formatSignedKg(deltaKg: number): string {
+  if (deltaKg === 0) return `${formatWeightKg(0)} kg`;
+  if (deltaKg > 0) return `+${formatWeightKg(deltaKg)} kg`;
+  return `\u2212${formatWeightKg(Math.abs(deltaKg))} kg`;
 }
 
 export { MAX_PHOTOS, MIN_WEIGHT_KG, MAX_WEIGHT_KG };

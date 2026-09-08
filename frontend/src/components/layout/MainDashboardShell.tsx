@@ -170,6 +170,7 @@ export function MainDashboardShell({
             selectedDate={selectedDate}
             checkIn={checkIn.checkIn}
             sevenDayAvg={checkIn.sevenDayAvg}
+            rollingDeltas={checkIn.rollingDeltas}
             checkInLoading={checkIn.loadingCheckIn}
             checkInLoadError={checkIn.checkInLoadError}
             deleteCheckInError={checkIn.deleteCheckInError}
@@ -191,7 +192,11 @@ export function MainDashboardShell({
         )}
 
         {appSection === "check-in" && dashboardTab === "month" && (
-          <CheckInMonthView anchorDate={selectedDate} onAnchorChange={onDateChange} />
+          <CheckInMonthView
+            anchorDate={selectedDate}
+            onAnchorChange={onDateChange}
+            onSelectDate={onOpenDay}
+          />
         )}
       </div>
 
