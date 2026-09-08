@@ -1,6 +1,12 @@
 import type { CheckIn } from "../../types/health";
 import { useConfirm } from "../../context/useConfirm";
-import { formatSevenDayAvgKg, type SevenDayWeightAverage } from "../../lib/checkIn";
+import {
+  formatSevenDayAvgKg,
+  formatSignedKg,
+  ROLLING_AVG_DELTA_PERIODS,
+  type RollingAverageDelta,
+  type SevenDayWeightAverage,
+} from "../../lib/checkIn";
 import { addDays, formatDayHeader, isToday, toDateKey } from "../../lib/dates";
 import { PAGE_SHELL } from "../../lib/layout";
 import { isFutureDate } from "../../lib/logLabels";
@@ -11,6 +17,7 @@ interface CheckInDayViewProps {
   selectedDate: string;
   checkIn: CheckIn | null;
   sevenDayAvg?: SevenDayWeightAverage | null;
+  rollingDeltas?: Array<RollingAverageDelta | null>;
   checkInLoading?: boolean;
   checkInLoadError?: string | null;
   deleteCheckInError?: string | null;
@@ -26,6 +33,7 @@ export function CheckInDayView({
   selectedDate,
   checkIn,
   sevenDayAvg = null,
+  rollingDeltas = [null, null, null, null],
   checkInLoading = false,
   checkInLoadError = null,
   deleteCheckInError = null,
@@ -126,6 +134,36 @@ export function CheckInDayView({
               >
                 Add check-in
               </button>
+            </div>
+          )}
+
+          {!checkInLoading && (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-surface-elevated/80 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                7-day avg change
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                {rollingDeltas.map((delta, index) => (
+                  <div key={ROLLING_AVG_DELTA_PERIODS[index].fullLabel}>
+                    <p className="text-xs text-zinc-500">
+                      {delta?.label ?? ROLLING_AVG_DELTA_PERIODS[index].fullLabel}
+                    </p>
+                    <p
+                      className={
+                        delta === null
+                          ? "text-sm font-semibold text-zinc-500"
+                          : delta.deltaKg < 0
+                            ? "text-sm font-semibold text-teal-400"
+                            : delta.deltaKg > 0
+                              ? "text-sm font-semibold text-rose-400"
+                              : "text-sm font-semibold text-zinc-300"
+                      }
+                    >
+                      {delta === null ? "—" : formatSignedKg(delta.deltaKg)}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

@@ -4,6 +4,7 @@ import {
   checkInWeekFetchRange,
   formatSevenDayAvgKg,
   sevenDayWeightAverageAsOf,
+  toWeightChartDays,
 } from "../../lib/checkIn";
 import { addWeeks, formatWeekRange, getWeekRange, toDateKey, trailingSevenDayDates } from "../../lib/dates";
 import { PAGE_SHELL } from "../../lib/layout";
@@ -97,26 +98,6 @@ export function CheckInWeekView({
       </div>
     </div>
   );
-}
-
-function toWeightChartDays(
-  dates: string[],
-  checkIns: CheckIn[],
-  today: string,
-): WeightChartDay[] {
-  const weightByDate = new Map(
-    checkIns
-      .filter((checkIn) => checkIn.weightKg !== null)
-      .map((checkIn) => [checkIn.checkInDate, checkIn.weightKg as number]),
-  );
-  return dates.map((date) => ({
-    date,
-    weekday: new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
-      weekday: "narrow",
-    }),
-    weight: weightByDate.get(date) ?? null,
-    avg: sevenDayWeightAverageAsOf(date, checkIns, today),
-  }));
 }
 
 function WeightChartCard({

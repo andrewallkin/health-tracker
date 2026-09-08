@@ -16,9 +16,25 @@ export function addDays(dateKey: string, delta: number): string {
   return toDateKey(date);
 }
 
+export function trailingDayDates(asOf: string, count: number): string[] {
+  return Array.from({ length: count }, (_, index) => addDays(asOf, index - (count - 1)));
+}
+
 /** Inclusive window of seven days ending on `asOf`. */
 export function trailingSevenDayDates(asOf: string): string[] {
-  return Array.from({ length: 7 }, (_, index) => addDays(asOf, index - 6));
+  return trailingDayDates(asOf, 7);
+}
+
+export function getMonthDates(year: number, month: number): string[] {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  return Array.from({ length: lastDay }, (_, index) =>
+    toDateKey(new Date(year, month, index + 1)),
+  );
+}
+
+export function daysBetween(startKey: string, endKey: string): number {
+  const ms = parseDateKey(endKey).getTime() - parseDateKey(startKey).getTime();
+  return Math.round(ms / (24 * 60 * 60 * 1000));
 }
 
 export function isToday(dateKey: string): boolean {
