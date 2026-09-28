@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   connectGarmin,
   disconnectGarmin,
@@ -71,6 +71,9 @@ export function GoalsSettingsPage({
   const [externalRevealedKey, setExternalRevealedKey] = useState<string | null>(null);
   const [externalBusy, setExternalBusy] = useState(false);
   const [externalError, setExternalError] = useState<string | null>(null);
+  const [externalKeyCopied, setExternalKeyCopied] = useState(false);
+  const [externalCopyError, setExternalCopyError] = useState<string | null>(null);
+  const externalKeyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -261,6 +264,8 @@ export function GoalsSettingsPage({
       const created = await generateExternalApiKey();
       setExternalHasKey(true);
       setExternalPrefix(created.prefix);
+      setExternalKeyCopied(false);
+      setExternalCopyError(null);
       setExternalRevealedKey(created.apiKey);
     } catch (err) {
       setExternalError(err instanceof Error ? err.message : "Could not generate API key");
@@ -306,12 +311,33 @@ export function GoalsSettingsPage({
     })();
   };
 
+  const closeExternalKeyDialog = () => {
+    setExternalRevealedKey(null);
+    setExternalKeyCopied(false);
+    setExternalCopyError(null);
+  };
+
   const copyExternalKey = async () => {
     if (!externalRevealedKey) return;
+    setExternalCopyError(null);
+    const input = externalKeyInputRef.current;
     try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("clipboard unavailable");
+      }
       await navigator.clipboard.writeText(externalRevealedKey);
+      setExternalKeyCopied(true);
     } catch {
-      setExternalError("Could not copy the key. Select it and copy it manually.");
+      if (input) {
+        input.focus();
+        input.select();
+        if (document.execCommand("copy")) {
+          setExternalKeyCopied(true);
+          return;
+        }
+      }
+      setExternalKeyCopied(false);
+      setExternalCopyError("Could not copy the key. Select it and copy it manually.");
     }
   };
 
@@ -670,21 +696,30 @@ export function GoalsSettingsPage({
         </Modal>
       )}
       {externalRevealedKey && (
-        <Modal title="Copy your API key" onClose={() => setExternalRevealedKey(null)}>
+        <Modal title="Copy your API key" onClose={closeExternalKeyDialog}>
           <p className="mb-4 text-xs leading-relaxed text-zinc-500">
             This is the only time the full key is shown. Store it in Grok. Regenerating it later
             invalidates this one.
           </p>
           <input
+            ref={externalKeyInputRef}
             readOnly
             value={externalRevealedKey}
             className={inputClass}
             onFocus={(event) => event.currentTarget.select()}
           />
+          {externalKeyCopied && (
+            <p className="mt-3 text-sm text-emerald-400">Copied to clipboard.</p>
+          )}
+          {externalCopyError && (
+            <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+              {externalCopyError}
+            </p>
+          )}
           <div className="mt-4 flex gap-2">
             <button
               type="button"
-              onClick={() => setExternalRevealedKey(null)}
+              onClick={closeExternalKeyDialog}
               className="flex-1 rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-semibold text-zinc-300 transition hover:bg-white/10"
             >
               Done
@@ -694,7 +729,7 @@ export function GoalsSettingsPage({
               onClick={() => void copyExternalKey()}
               className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-semibold text-zinc-900 transition hover:bg-amber-400"
             >
-              Copy
+              {externalKeyCopied ? "Copied" : "Copy"}
             </button>
           </div>
         </Modal>
