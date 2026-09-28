@@ -1,0 +1,46 @@
+Health Tracker external API instructions for a bot.
+
+Auth: Authorization: Bearer ht_...
+JWT login tokens are rejected. The key is created in Settings and shown once.
+Timezone: Africa/Johannesburg. Dates are YYYY-MM-DD. Omit date to use today. Writes after today are rejected.
+
+GET /api/external/info
+Plain-text instructions. No auth.
+
+GET /api/external/docs
+Longer markdown reference. No auth.
+
+GET /api/external/foods?q=
+Saved foods. Optional q matches the name. Macros are for one serving. No photos.
+
+GET /api/external/meals?q=
+Saved meals and their foods. Read only. Creating or logging a meal is not available.
+
+POST /api/external/foods
+Create a saved food: name, calories, protein, carbs, fat, optional description. No photo. This does not log anything.
+
+POST /api/external/quick-log
+Log food Grok estimated. Body: name, slot (breakfast, lunch, dinner, or snack), calories, protein, carbs, fat, optional date. Macros are the totals eaten. Servings are stored as 1. This does not save a food.
+
+POST /api/external/log-food
+Log one saved food. Body: foodId from GET /api/external/foods, servings such as 0.5 or 1.5, slot, optional date. The server copies that food's macros and multiplies by servings. Unknown ids are rejected. Do not send macros.
+
+DELETE /api/external/entries/{entryId}
+Undo a log. The id comes from today.entries.
+
+GET /api/external/today?date=
+Call this before logging. Returns the goal, eaten macros, remaining macros, today's log lines, whether the day is skipped, the weigh-in, and Garmin health. Burned calories are totalCalories. If Garmin is disconnected, health.status is unavailable and nutrition is still returned. 404 when no daily goal is configured.
+
+GET /api/external/week?date=
+Monday-Sunday week containing date. Nutrition averages include only days with log entries that are not skipped. Energy averages pair those days with Garmin totalCalories.
+
+GET /api/external/month?year=&month=
+Calendar month. Same averaging rules as week. Defaults to the current month.
+
+GET /api/external/weight?date=
+Weigh-in, 7-day average, a 7-day series, a 30-day series, and the change in the 7-day average over 1, 7, 14, and 30 days.
+
+PUT /api/external/weight
+Body: weightKg from 30 to 300, optional date. One weigh-in per day. Updating weight does not remove check-in notes or photos.
+
+AI estimate is not available. Grok estimates the food, then uses quick-log or saves it with POST /api/external/foods.

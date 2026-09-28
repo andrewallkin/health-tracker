@@ -11,6 +11,7 @@ from .api.routes import (
     day_statuses,
     entries,
     estimate,
+    external,
     foods,
     goals,
     health,
@@ -53,6 +54,7 @@ app.include_router(photos.router, prefix="/api")
 app.include_router(check_ins.router, prefix="/api")
 app.include_router(day_statuses.router, prefix="/api")
 app.include_router(health.router, prefix="/api")
+app.include_router(external.router, prefix="/api")
 
 
 @app.get("/health")

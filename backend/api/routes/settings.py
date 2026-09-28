@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session
 
 from ...crypto import encrypt_api_key
 from ...database import get_db
-from ...db_models import AppSettingsRow, UserRow
+from ...db_models import AppSettingsRow, UserRow, utcnow
 from ...garmin_auth import GarminAuthError, login_and_dump_tokens
 from ..deps import get_current_user
+from ..external_auth import create_external_api_key_material
 from ..mappers import app_settings_to_schema, get_or_create_app_settings
 from ..schemas import (
     AiSettings,
@@ -17,6 +18,7 @@ from ..schemas import (
     ModelOption,
     ModelsResponse,
 )
+from ..schemas_external import ExternalApiKeyCreated, ExternalApiKeyStatus
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -150,3 +152,50 @@ def disconnect_garmin(
     db.commit()
     db.refresh(row)
     return garmin_settings_from_row(row)
+
+
+def _external_key_status(user: UserRow) -> ExternalApiKeyStatus:
+    has_key = bool(user.external_api_key_hash)
+    created = user.external_api_key_created_at
+    return ExternalApiKeyStatus(
+        hasKey=has_key,
+        prefix=user.external_api_key_prefix if has_key else None,
+        createdAt=created.isoformat() if has_key and created is not None else None,
+    )
+
+
+@router.get("/external-api-key", response_model=ExternalApiKeyStatus)
+def get_external_api_key(
+    user: UserRow = Depends(get_current_user),
+) -> ExternalApiKeyStatus:
+    return _external_key_status(user)
+
+
+@router.post("/external-api-key", response_model=ExternalApiKeyCreated, status_code=201)
+def generate_external_api_key(
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_current_user),
+) -> ExternalApiKeyCreated:
+    full_key, prefix, key_hash = create_external_api_key_material()
+    user.external_api_key_hash = key_hash
+    user.external_api_key_prefix = prefix
+    user.external_api_key_created_at = utcnow()
+    db.commit()
+    db.refresh(user)
+    created = user.external_api_key_created_at
+    return ExternalApiKeyCreated(
+        apiKey=full_key,
+        prefix=prefix,
+        createdAt=created.isoformat() if created is not None else "",
+    )
+
+
+@router.delete("/external-api-key", status_code=204)
+def revoke_external_api_key(
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_current_user),
+) -> None:
+    user.external_api_key_hash = None
+    user.external_api_key_prefix = None
+    user.external_api_key_created_at = None
+    db.commit()

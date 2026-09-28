@@ -38,6 +38,18 @@ export interface GarminConnectRequest {
   password: string;
 }
 
+export interface ExternalApiKeyStatus {
+  hasKey: boolean;
+  prefix: string | null;
+  createdAt: string | null;
+}
+
+export interface ExternalApiKeyCreated {
+  apiKey: string;
+  prefix: string;
+  createdAt: string;
+}
+
 export interface HealthDayError {
   date: string;
   message: string;
@@ -320,6 +332,18 @@ export async function connectGarmin(payload: GarminConnectRequest): Promise<Garm
 
 export async function disconnectGarmin(): Promise<GarminSettings> {
   return request<GarminSettings>("/settings/garmin", { method: "DELETE" });
+}
+
+export async function fetchExternalApiKeyStatus(): Promise<ExternalApiKeyStatus> {
+  return request<ExternalApiKeyStatus>("/settings/external-api-key");
+}
+
+export async function generateExternalApiKey(): Promise<ExternalApiKeyCreated> {
+  return request<ExternalApiKeyCreated>("/settings/external-api-key", { method: "POST" });
+}
+
+export async function revokeExternalApiKey(): Promise<void> {
+  await request<void>("/settings/external-api-key", { method: "DELETE" });
 }
 
 export function clientTimezone(): string {
