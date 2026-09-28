@@ -58,6 +58,8 @@ def test_info_and_docs_are_public(client) -> None:
     body = info.text
     assert "POST /api/external/quick-log" in body
     assert "POST /api/external/log-food" in body
+    assert "POST /api/external/meals" in body
+    assert "POST /api/external/log-meal" in body
     assert "DELETE /api/external/entries/{entryId}" in body
     assert "PUT /api/external/weight" in body
     assert "AI estimate" in body
@@ -122,6 +124,7 @@ def test_food_and_meal_search_is_compact(client, auth_headers) -> None:
     assert created.status_code == 201, created.text
     food = created.json()
     assert food["name"] == "Chicken breast"
+    assert food["description"] == "grilled"
     assert "imageUrl" not in food
     assert food["calories"] == 165
 
@@ -135,6 +138,7 @@ def test_food_and_meal_search_is_compact(client, auth_headers) -> None:
     listed = client.get("/api/external/foods", headers=headers, params={"q": "CHICK"})
     assert listed.status_code == 200
     assert [item["name"] for item in listed.json()] == ["Chicken breast"]
+    assert listed.json()[0]["description"] == "grilled"
     assert "imageUrl" not in listed.json()[0]
 
     meal = client.post(
@@ -155,10 +159,169 @@ def test_food_and_meal_search_is_compact(client, auth_headers) -> None:
     body = meals.json()
     assert len(body) == 1
     assert body[0]["name"] == "Chicken bowl"
+    assert body[0]["description"] is None
     assert "imageUrl" not in body[0]
     assert body[0]["items"] == [
         {"foodId": food["id"], "foodName": "Chicken breast", "quantity": 1}
     ]
+
+
+def test_manual_meal_create_saves_description_and_does_not_log(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    created = client.post(
+        "/api/external/meals",
+        headers=headers,
+        json={
+            "name": "  Restaurant pasta  ",
+            "description": "estimated from the menu",
+            "calories": 700,
+            "protein": 25,
+            "carbs": 80,
+            "fat": 28,
+        },
+    )
+    assert created.status_code == 201, created.text
+    meal = created.json()
+    assert meal["name"] == "Restaurant pasta"
+    assert meal["description"] == "estimated from the menu"
+    assert meal["calories"] == 700
+    assert meal["protein"] == 25
+    assert meal["items"] == []
+    assert "imageUrl" not in meal
+
+    listed = client.get("/api/external/meals", headers=headers).json()
+    assert listed[0]["id"] == meal["id"]
+    assert listed[0]["description"] == "estimated from the menu"
+    assert client.get("/api/entries", headers=auth_headers).json() == []
+
+    missing_macros = client.post(
+        "/api/external/meals",
+        headers=headers,
+        json={"name": "Incomplete", "calories": 100},
+    )
+    assert missing_macros.status_code == 422
+
+
+def test_composed_meal_create_uses_a_portion_of_each_food(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    chicken = client.post(
+        "/api/external/foods",
+        headers=headers,
+        json={"name": "Chicken", "description": "grilled", "calories": 100, "protein": 10, "carbs": 20, "fat": 4},
+    ).json()
+    rice = client.post(
+        "/api/external/foods",
+        headers=headers,
+        json={"name": "Rice", "calories": 80, "protein": 2, "carbs": 16, "fat": 2},
+    ).json()
+
+    created = client.post(
+        "/api/external/meals",
+        headers=headers,
+        json={
+            "name": "Chicken bowl",
+            "description": "lunch combo",
+            "items": [
+                {"foodId": chicken["id"], "quantity": 1.5},
+                {"foodId": rice["id"], "quantity": 0.5},
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    meal = created.json()
+    assert meal["description"] == "lunch combo"
+    assert meal["calories"] == 190
+    assert meal["protein"] == 16
+    assert meal["carbs"] == 38
+    assert meal["fat"] == 7
+    assert meal["items"] == [
+        {"foodId": chicken["id"], "foodName": "Chicken", "quantity": 1.5},
+        {"foodId": rice["id"], "foodName": "Rice", "quantity": 0.5},
+    ]
+
+    duplicate = client.post(
+        "/api/external/meals",
+        headers=headers,
+        json={
+            "name": "Double chicken",
+            "items": [
+                {"foodId": chicken["id"], "quantity": 1},
+                {"foodId": chicken["id"], "quantity": 0.5},
+            ],
+        },
+    )
+    assert duplicate.status_code == 400
+
+    missing_food = client.post(
+        "/api/external/meals",
+        headers=headers,
+        json={"name": "Ghost", "items": [{"foodId": str(uuid.uuid4()), "quantity": 1}]},
+    )
+    assert missing_food.status_code == 404
+
+    other_headers = register_user(client, "meal-other@example.com")
+    other_key = issue_key(client, other_headers)
+    foreign = client.post(
+        "/api/external/meals",
+        headers=external_headers(other_key),
+        json={"name": "Stolen", "items": [{"foodId": chicken["id"], "quantity": 1}]},
+    )
+    assert foreign.status_code == 404
+
+
+def test_log_meal_scales_saved_macros(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    meal = client.post(
+        "/api/external/meals",
+        headers=headers,
+        json={
+            "name": "Oats",
+            "description": "with milk",
+            "calories": 300,
+            "protein": 12,
+            "carbs": 40,
+            "fat": 8,
+        },
+    ).json()
+
+    logged = client.post(
+        "/api/external/log-meal",
+        headers=headers,
+        json={"mealId": meal["id"], "servings": 1.5, "slot": "breakfast", "date": "2026-09-20"},
+    )
+    assert logged.status_code == 201, logged.text
+    body = logged.json()
+    assert body["name"] == "Oats"
+    assert body["servings"] == 1.5
+    assert body["calories"] == 450
+    assert body["protein"] == 18
+    assert body["carbs"] == 60
+    assert body["fat"] == 12
+    assert body["slot"] == "breakfast"
+    assert body["logDate"] == "2026-09-20"
+
+    entries = client.get("/api/entries", headers=auth_headers, params={"date": "2026-09-20"})
+    assert entries.status_code == 200, entries.text
+    assert entries.json()[0]["savedMealId"] == meal["id"]
+
+    missing = client.post(
+        "/api/external/log-meal",
+        headers=headers,
+        json={"mealId": str(uuid.uuid4()), "servings": 1, "slot": "lunch"},
+    )
+    assert missing.status_code == 404
+
+    other_headers = register_user(client, "log-meal-other@example.com")
+    other_key = issue_key(client, other_headers)
+    foreign = client.post(
+        "/api/external/log-meal",
+        headers=external_headers(other_key),
+        json={"mealId": meal["id"], "servings": 1, "slot": "lunch", "date": "2026-09-20"},
+    )
+    assert foreign.status_code == 404
 
 
 def test_quick_log_does_not_save_a_food_and_log_food_scales_saved_macros(client, auth_headers) -> None:
