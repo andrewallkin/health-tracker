@@ -3,8 +3,11 @@ import {
   connectGarmin,
   disconnectGarmin,
   fetchAiSettings,
+  fetchExternalApiKeyStatus,
   fetchGarminSettings,
   fetchModelOptions,
+  generateExternalApiKey,
+  revokeExternalApiKey,
   updateAiSettings,
   type ModelOption,
 } from "../../../lib/api";
@@ -63,11 +66,21 @@ export function GoalsSettingsPage({
   const [garminPasswordInput, setGarminPasswordInput] = useState("");
   const [garminSaving, setGarminSaving] = useState(false);
   const [garminError, setGarminError] = useState<string | null>(null);
+  const [externalHasKey, setExternalHasKey] = useState(false);
+  const [externalPrefix, setExternalPrefix] = useState<string | null>(null);
+  const [externalRevealedKey, setExternalRevealedKey] = useState<string | null>(null);
+  const [externalBusy, setExternalBusy] = useState(false);
+  const [externalError, setExternalError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchAiSettings(), fetchModelOptions(), fetchGarminSettings()])
-      .then(([ai, models, garmin]) => {
+    Promise.all([
+      fetchAiSettings(),
+      fetchModelOptions(),
+      fetchGarminSettings(),
+      fetchExternalApiKeyStatus(),
+    ])
+      .then(([ai, models, garmin, externalKey]) => {
         if (cancelled) return;
         setTextModel(ai.textModel);
         setImageModel(ai.imageModel);
@@ -75,6 +88,8 @@ export function GoalsSettingsPage({
         setModelOptions(models);
         setGarminConnected(garmin.connected);
         setGarminEmail(garmin.email);
+        setExternalHasKey(externalKey.hasKey);
+        setExternalPrefix(externalKey.prefix);
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
@@ -239,10 +254,71 @@ export function GoalsSettingsPage({
     })();
   };
 
+  const handleGenerateExternalKey = async () => {
+    setExternalBusy(true);
+    setExternalError(null);
+    try {
+      const created = await generateExternalApiKey();
+      setExternalHasKey(true);
+      setExternalPrefix(created.prefix);
+      setExternalRevealedKey(created.apiKey);
+    } catch (err) {
+      setExternalError(err instanceof Error ? err.message : "Could not generate API key");
+    } finally {
+      setExternalBusy(false);
+    }
+  };
+
+  const requestRegenerateExternalKey = () => {
+    setExternalError(null);
+    void (async () => {
+      const ok = await confirm({
+        title: "Regenerate API key?",
+        message: "The current key stops working immediately.",
+        confirmLabel: "Regenerate",
+        destructive: true,
+      });
+      if (ok) await handleGenerateExternalKey();
+    })();
+  };
+
+  const requestRevokeExternalKey = () => {
+    setExternalError(null);
+    void (async () => {
+      const ok = await confirm({
+        title: "Revoke API key?",
+        message: "Grok will no longer be able to call this account until you generate a new key.",
+        confirmLabel: "Revoke",
+        destructive: true,
+      });
+      if (!ok) return;
+      setExternalBusy(true);
+      try {
+        await revokeExternalApiKey();
+        setExternalHasKey(false);
+        setExternalPrefix(null);
+        setExternalRevealedKey(null);
+      } catch (err) {
+        setExternalError(err instanceof Error ? err.message : "Could not revoke API key");
+      } finally {
+        setExternalBusy(false);
+      }
+    })();
+  };
+
+  const copyExternalKey = async () => {
+    if (!externalRevealedKey) return;
+    try {
+      await navigator.clipboard.writeText(externalRevealedKey);
+    } catch {
+      setExternalError("Could not copy the key. Select it and copy it manually.");
+    }
+  };
+
   return (
     <PageShell
       title="Settings"
-      subtitle="Daily targets, AI estimation, and Garmin"
+      subtitle="Daily targets, AI estimation, Garmin, and external API"
       onBack={onBack}
       footer={
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center bg-gradient-to-t from-surface via-surface/90 to-transparent px-4 pb-6 pt-10">
@@ -334,6 +410,70 @@ export function GoalsSettingsPage({
               {garminError && garminDialog === "closed" && (
                 <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
                   {garminError}
+                </p>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
+              <h2 className="mb-1 text-sm font-medium text-zinc-300">External API key</h2>
+              <p className="mb-4 text-xs leading-relaxed text-zinc-500">
+                Use this key so Grok can read and log your nutrition, activity, and weight. It is shown
+                once. Send it as <span className="text-zinc-300">Authorization: Bearer ht_…</span>
+              </p>
+              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-3">
+                {externalHasKey ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-zinc-100">Key active</p>
+                      <p className="truncate text-xs text-zinc-500">{externalPrefix}…</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={externalBusy}
+                        onClick={requestRegenerateExternalKey}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+                      >
+                        Regenerate
+                      </button>
+                      <button
+                        type="button"
+                        disabled={externalBusy}
+                        onClick={requestRevokeExternalKey}
+                        className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-50"
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-zinc-300">No key</p>
+                      <p className="text-xs text-zinc-500">Generate one to connect Grok</p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={externalBusy}
+                      onClick={() => void handleGenerateExternalKey()}
+                      className="shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-400 transition hover:bg-amber-500/20 disabled:opacity-50"
+                    >
+                      {externalBusy ? "Generating…" : "Generate key"}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <a
+                href="/api/external/docs"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-block text-xs font-medium text-amber-400 hover:text-amber-300"
+              >
+                View API docs
+              </a>
+              {externalError && (
+                <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+                  {externalError}
                 </p>
               )}
             </section>
@@ -525,6 +665,36 @@ export function GoalsSettingsPage({
               className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-semibold text-zinc-900 transition hover:bg-amber-400 disabled:opacity-40"
             >
               {garminSaving ? "Connecting…" : "Connect"}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {externalRevealedKey && (
+        <Modal title="Copy your API key" onClose={() => setExternalRevealedKey(null)}>
+          <p className="mb-4 text-xs leading-relaxed text-zinc-500">
+            This is the only time the full key is shown. Store it in Grok. Regenerating it later
+            invalidates this one.
+          </p>
+          <input
+            readOnly
+            value={externalRevealedKey}
+            className={inputClass}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setExternalRevealedKey(null)}
+              className="flex-1 rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-semibold text-zinc-300 transition hover:bg-white/10"
+            >
+              Done
+            </button>
+            <button
+              type="button"
+              onClick={() => void copyExternalKey()}
+              className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-semibold text-zinc-900 transition hover:bg-amber-400"
+            >
+              Copy
             </button>
           </div>
         </Modal>
