@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from backend.database import get_db
 from backend.db_models import CheckInPhotoRow, CheckInRow, GarminDailyHealthRow
@@ -38,6 +39,16 @@ def close_db(gen) -> None:
         next(gen)
     except StopIteration:
         pass
+
+
+def test_external_docs_ship_inside_the_backend_package() -> None:
+    from backend.api.routes.external import _DOCS_PATH, _INFO_PATH
+
+    backend_root = Path(__file__).resolve().parents[1]
+    assert _DOCS_PATH.is_file()
+    assert _INFO_PATH.is_file()
+    assert _DOCS_PATH.is_relative_to(backend_root)
+    assert _INFO_PATH.is_relative_to(backend_root)
 
 
 def test_info_and_docs_are_public(client) -> None:

@@ -27,20 +27,15 @@ from ..schemas_external import ExternalFoodCreate, ExternalLogFood, ExternalQuic
 
 router = APIRouter(prefix="/external", tags=["external"])
 
-_DOCS_CANDIDATES = (
-    Path(__file__).resolve().parents[3] / "docs" / "external-api.md",
-    Path(__file__).resolve().parents[2] / "docs" / "external-api.md",
-)
-_INFO_CANDIDATES = (
-    Path(__file__).resolve().parents[3] / "docs" / "external-api-info.txt",
-    Path(__file__).resolve().parents[2] / "docs" / "external-api-info.txt",
-)
+# Ship beside the backend package. The image copies `backend/` and dockerignore drops other *.md files.
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_DOCS_PATH = _BACKEND_ROOT / "docs" / "external-api.md"
+_INFO_PATH = _BACKEND_ROOT / "docs" / "external-api-info.txt"
 
 
-def _read_first(candidates: tuple[Path, ...], label: str) -> str:
-    for path in candidates:
-        if path.is_file():
-            return path.read_text(encoding="utf-8")
+def _read_packaged(path: Path, label: str) -> str:
+    if path.is_file():
+        return path.read_text(encoding="utf-8")
     from fastapi import HTTPException
 
     raise HTTPException(status_code=404, detail=f"{label} not found")
@@ -48,13 +43,13 @@ def _read_first(candidates: tuple[Path, ...], label: str) -> str:
 
 @router.get("/info", response_class=PlainTextResponse)
 def get_external_info() -> PlainTextResponse:
-    return PlainTextResponse(_read_first(_INFO_CANDIDATES, "External API info"), media_type="text/plain; charset=utf-8")
+    return PlainTextResponse(_read_packaged(_INFO_PATH, "External API info"), media_type="text/plain; charset=utf-8")
 
 
 @router.get("/docs", response_class=PlainTextResponse)
 def get_external_docs() -> PlainTextResponse:
     return PlainTextResponse(
-        _read_first(_DOCS_CANDIDATES, "External API documentation"),
+        _read_packaged(_DOCS_PATH, "External API documentation"),
         media_type="text/markdown; charset=utf-8",
     )
 
