@@ -15,15 +15,24 @@ from ..external_service import (
     build_week,
     build_weight,
     create_food,
+    create_meal,
     delete_entry,
     list_foods,
     list_meals,
     log_food,
+    log_meal,
     quick_log,
     upsert_weight,
 )
 from ..external_time import current_hhmm, johannesburg_now, resolve_optional_date
-from ..schemas_external import ExternalFoodCreate, ExternalLogFood, ExternalQuickLog, ExternalWeightWrite
+from ..schemas_external import (
+    ExternalFoodCreate,
+    ExternalLogFood,
+    ExternalLogMeal,
+    ExternalMealCreate,
+    ExternalQuickLog,
+    ExternalWeightWrite,
+)
 
 router = APIRouter(prefix="/external", tags=["external"])
 
@@ -70,6 +79,43 @@ def get_meals(
     user: UserRow = Depends(get_user_from_external_api_key),
 ) -> list[dict]:
     return list_meals(db, user.id, q)
+
+
+@router.post("/meals", status_code=201)
+def post_meal(
+    payload: ExternalMealCreate,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    items = None if payload.items is None else [(item.foodId, item.quantity) for item in payload.items]
+    return create_meal(
+        db,
+        user.id,
+        name=payload.name,
+        description=payload.description,
+        calories=payload.calories,
+        protein=payload.protein,
+        carbs=payload.carbs,
+        fat=payload.fat,
+        items=items,
+    )
+
+
+@router.post("/log-meal", status_code=201)
+def post_log_meal(
+    payload: ExternalLogMeal,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    return log_meal(
+        db,
+        user.id,
+        meal_id=payload.mealId,
+        servings=payload.servings,
+        slot=payload.slot,
+        log_date=resolve_optional_date(payload.date),
+        time_value=current_hhmm(),
+    )
 
 
 @router.post("/foods", status_code=201)

@@ -21,7 +21,14 @@ from ..db_models import (
 from .external_time import add_days, today_key
 from .health_service import GarminNotConnectedError, require_garmin_connected, resolve_dates, resolve_day
 from .mappers import get_daily_goal, get_or_create_app_settings
-from .ownership import get_check_in_for_date, get_day_status_for_date, get_owned_entry, get_owned_food
+from .compose import sum_components
+from .ownership import (
+    get_check_in_for_date,
+    get_day_status_for_date,
+    get_owned_entry,
+    get_owned_food,
+    get_owned_meal,
+)
 from .routes.health import build_fetch_day
 from .schemas import DailyHealth
 
@@ -77,6 +84,35 @@ def list_foods(db: Session, user_id: str, q: str | None) -> list[dict]:
     return [_food_out(row) for row in rows]
 
 
+def _meal_out(row: SavedMealRow) -> dict:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "description": row.description,
+        "calories": row.calories,
+        "protein": row.protein,
+        "carbs": row.carbs,
+        "fat": row.fat,
+        "items": [
+            {
+                "foodId": item.food_id,
+                "foodName": item.food.name if item.food is not None else "",
+                "quantity": item.quantity,
+            }
+            for item in row.items
+        ],
+    }
+
+
+def _load_meal(db: Session, user_id: str, meal_id: str) -> SavedMealRow | None:
+    return (
+        db.query(SavedMealRow)
+        .options(joinedload(SavedMealRow.items).joinedload(SavedMealItemRow.food))
+        .filter(SavedMealRow.user_id == user_id, SavedMealRow.id == meal_id)
+        .first()
+    )
+
+
 def list_meals(db: Session, user_id: str, q: str | None) -> list[dict]:
     query = (
         db.query(SavedMealRow)
@@ -86,28 +122,7 @@ def list_meals(db: Session, user_id: str, q: str | None) -> list[dict]:
     if q and q.strip():
         query = query.filter(func.lower(SavedMealRow.name).like(f"%{q.strip().lower()}%"))
     rows = query.order_by(SavedMealRow.name).all()
-    meals: list[dict] = []
-    for row in rows:
-        meals.append(
-            {
-                "id": row.id,
-                "name": row.name,
-                "description": row.description,
-                "calories": row.calories,
-                "protein": row.protein,
-                "carbs": row.carbs,
-                "fat": row.fat,
-                "items": [
-                    {
-                        "foodId": item.food_id,
-                        "foodName": item.food.name if item.food is not None else "",
-                        "quantity": item.quantity,
-                    }
-                    for item in row.items
-                ],
-            }
-        )
-    return meals
+    return [_meal_out(row) for row in rows]
 
 
 def create_food(
@@ -154,6 +169,7 @@ def _insert_entry(
     carbs: float,
     fat: float,
     time_value: str,
+    saved_meal_id: str | None = None,
 ) -> dict:
     cleaned = name.strip()
     if not cleaned:
@@ -170,7 +186,7 @@ def _insert_entry(
         protein=protein,
         carbs=carbs,
         fat=fat,
-        saved_meal_id=None,
+        saved_meal_id=saved_meal_id,
         image_url=None,
     )
     db.add(row)
@@ -232,6 +248,112 @@ def log_food(
         carbs=float(half_up(food.carbs * servings)),
         fat=float(half_up(food.fat * servings)),
         time_value=time_value,
+    )
+
+
+def create_meal(
+    db: Session,
+    user_id: str,
+    *,
+    name: str,
+    description: str | None,
+    calories: int | None,
+    protein: float | None,
+    carbs: float | None,
+    fat: float | None,
+    items: list[tuple[str, float]] | None,
+) -> dict:
+    cleaned = name.strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="Name is required")
+
+    if items:
+        food_ids = [food_id for food_id, _quantity in items]
+        if len(food_ids) != len(set(food_ids)):
+            raise HTTPException(status_code=400, detail="Each food can appear once in a meal")
+        row = SavedMealRow(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            name=cleaned,
+            description=description,
+            image_url=None,
+            kind="composed",
+            calories=0,
+            protein=0,
+            carbs=0,
+            fat=0,
+        )
+        db.add(row)
+        db.flush()
+        components: list[tuple[SavedFoodRow, float]] = []
+        for index, (food_id, quantity) in enumerate(items):
+            food = get_owned_food(db, user_id, food_id)
+            if food is None:
+                raise HTTPException(status_code=404, detail=f"Food not found: {food_id}")
+            item = SavedMealItemRow(
+                id=str(uuid.uuid4()),
+                meal_id=row.id,
+                food_id=food.id,
+                quantity=quantity,
+                sort_order=index,
+            )
+            item.food = food
+            db.add(item)
+            row.items.append(item)
+            components.append((food, quantity))
+        totals = sum_components(components)
+        row.calories = totals.calories
+        row.protein = totals.protein
+        row.carbs = totals.carbs
+        row.fat = totals.fat
+    else:
+        row = SavedMealRow(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            name=cleaned,
+            description=description,
+            image_url=None,
+            kind="manual",
+            calories=calories or 0,
+            protein=protein or 0,
+            carbs=carbs or 0,
+            fat=fat or 0,
+        )
+        db.add(row)
+
+    db.commit()
+    loaded = _load_meal(db, user_id, row.id)
+    if loaded is None:
+        raise HTTPException(status_code=404, detail="Meal not found")
+    return _meal_out(loaded)
+
+
+def log_meal(
+    db: Session,
+    user_id: str,
+    *,
+    meal_id: str,
+    servings: float,
+    slot: str,
+    log_date: str,
+    time_value: str,
+) -> dict:
+    meal = get_owned_meal(db, user_id, meal_id)
+    if meal is None:
+        raise HTTPException(status_code=404, detail="Meal not found")
+    return _insert_entry(
+        db,
+        user_id,
+        log_date=log_date,
+        slot=slot,
+        name=meal.name,
+        servings=servings,
+        calories=half_up(meal.calories * servings),
+        protein=float(half_up(meal.protein * servings)),
+        carbs=float(half_up(meal.carbs * servings)),
+        fat=float(half_up(meal.fat * servings)),
+        time_value=time_value,
+        saved_meal_id=meal.id,
     )
 
 
