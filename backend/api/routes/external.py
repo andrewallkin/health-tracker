@@ -17,19 +17,25 @@ from ..external_service import (
     create_food,
     create_meal,
     delete_entry,
+    delete_food,
+    delete_meal,
     list_foods,
     list_meals,
     log_food,
     log_meal,
     quick_log,
+    update_food,
+    update_meal,
     upsert_weight,
 )
 from ..external_time import current_hhmm, johannesburg_now, resolve_optional_date
 from ..schemas_external import (
     ExternalFoodCreate,
+    ExternalFoodUpdate,
     ExternalLogFood,
     ExternalLogMeal,
     ExternalMealCreate,
+    ExternalMealUpdate,
     ExternalQuickLog,
     ExternalWeightWrite,
 )
@@ -101,6 +107,28 @@ def post_meal(
     )
 
 
+@router.patch("/meals/{meal_id}")
+def patch_meal(
+    meal_id: str,
+    payload: ExternalMealUpdate,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    updates = payload.model_dump(exclude_unset=True)
+    if updates.get("items") is not None:
+        updates["items"] = [(item["foodId"], item["quantity"]) for item in updates["items"]]
+    return update_meal(db, user.id, meal_id, updates)
+
+
+@router.delete("/meals/{meal_id}", status_code=204)
+def remove_meal(
+    meal_id: str,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> None:
+    delete_meal(db, user.id, meal_id)
+
+
 @router.post("/log-meal", status_code=201)
 def post_log_meal(
     payload: ExternalLogMeal,
@@ -134,6 +162,26 @@ def post_food(
         carbs=payload.carbs,
         fat=payload.fat,
     )
+
+
+@router.patch("/foods/{food_id}")
+def patch_food(
+    food_id: str,
+    payload: ExternalFoodUpdate,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    return update_food(db, user.id, food_id, payload.model_dump(exclude_unset=True))
+
+
+@router.delete("/foods/{food_id}", status_code=204)
+def remove_food(
+    food_id: str,
+    confirm: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> None:
+    delete_food(db, user.id, food_id, confirm=confirm)
 
 
 @router.post("/quick-log", status_code=201)

@@ -31,6 +31,15 @@ class ExternalLogFood(BaseModel):
     date: str | None = None
 
 
+class ExternalFoodUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    calories: int | None = Field(default=None, gt=0)
+    protein: float | None = Field(default=None, ge=0)
+    carbs: float | None = Field(default=None, ge=0)
+    fat: float | None = Field(default=None, ge=0)
+
+
 class ExternalMealItemInput(BaseModel):
     foodId: str
     quantity: float = Field(gt=0)
@@ -53,6 +62,16 @@ class ExternalMealCreate(BaseModel):
         elif self.calories is None or self.protein is None or self.carbs is None or self.fat is None:
             raise ValueError("calories, protein, carbs, and fat are required for manual meals")
         return self
+
+
+class ExternalMealUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    calories: int | None = Field(default=None, gt=0)
+    protein: float | None = Field(default=None, ge=0)
+    carbs: float | None = Field(default=None, ge=0)
+    fat: float | None = Field(default=None, ge=0)
+    items: list[ExternalMealItemInput] | None = None
 
 
 class ExternalLogMeal(BaseModel):
