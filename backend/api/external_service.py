@@ -21,7 +21,12 @@ from ..db_models import (
 from .external_time import add_days, today_key
 from .health_service import GarminNotConnectedError, require_garmin_connected, resolve_dates, resolve_day
 from .mappers import get_daily_goal, get_or_create_app_settings
-from .compose import sum_components
+from .compose import (
+    cascade_delete_food,
+    get_meals_using_food,
+    recompute_meals_for_food,
+    sum_components,
+)
 from .ownership import (
     get_check_in_for_date,
     get_day_status_for_date,
@@ -89,6 +94,7 @@ def _meal_out(row: SavedMealRow) -> dict:
         "id": row.id,
         "name": row.name,
         "description": row.description,
+        "kind": row.kind,
         "calories": row.calories,
         "protein": row.protein,
         "carbs": row.carbs,
@@ -154,6 +160,56 @@ def create_food(
     db.commit()
     db.refresh(row)
     return _food_out(row)
+
+
+_MACRO_FIELDS = ("calories", "protein", "carbs", "fat")
+
+
+def _clean_name(name: object) -> str:
+    if not isinstance(name, str) or not name.strip():
+        raise HTTPException(status_code=400, detail="Name is required")
+    return name.strip()
+
+
+def update_food(db: Session, user_id: str, food_id: str, updates: dict) -> dict:
+    row = get_owned_food(db, user_id, food_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Food not found")
+    if "name" in updates:
+        row.name = _clean_name(updates["name"])
+    if "description" in updates:
+        row.description = updates["description"]
+    changed_macros = False
+    for field in _MACRO_FIELDS:
+        if field not in updates:
+            continue
+        if updates[field] is None:
+            raise HTTPException(status_code=422, detail=f"{field} cannot be null")
+        setattr(row, field, updates[field])
+        changed_macros = True
+    if changed_macros:
+        recompute_meals_for_food(db, user_id, food_id)
+    db.commit()
+    db.refresh(row)
+    return _food_out(row)
+
+
+def delete_food(db: Session, user_id: str, food_id: str, *, confirm: bool) -> None:
+    row = get_owned_food(db, user_id, food_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Food not found")
+    affected = get_meals_using_food(db, user_id, food_id)
+    if affected and not confirm:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Food is used in saved meals",
+                "affectedMealIds": [meal.id for meal in affected],
+                "affectedMealNames": [meal.name for meal in affected],
+            },
+        )
+    cascade_delete_food(db, user_id, row)
+    db.commit()
 
 
 def _insert_entry(
@@ -251,6 +307,50 @@ def log_food(
     )
 
 
+def _apply_meal_items(
+    db: Session,
+    user_id: str,
+    meal: SavedMealRow,
+    items: list[tuple[str, float]],
+) -> None:
+    if not items:
+        raise HTTPException(status_code=422, detail="items must be non-empty for composed meals")
+    food_ids = [food_id for food_id, _quantity in items]
+    if len(food_ids) != len(set(food_ids)):
+        raise HTTPException(status_code=400, detail="Each food can appear once in a meal")
+
+    resolved: list[tuple[SavedFoodRow, float]] = []
+    for food_id, quantity in items:
+        food = get_owned_food(db, user_id, food_id)
+        if food is None:
+            raise HTTPException(status_code=404, detail=f"Food not found: {food_id}")
+        resolved.append((food, quantity))
+
+    for item in list(meal.items):
+        db.delete(item)
+    meal.items.clear()
+    db.flush()
+
+    for index, (food, quantity) in enumerate(resolved):
+        item = SavedMealItemRow(
+            id=str(uuid.uuid4()),
+            meal_id=meal.id,
+            food_id=food.id,
+            quantity=quantity,
+            sort_order=index,
+        )
+        item.food = food
+        db.add(item)
+        meal.items.append(item)
+
+    totals = sum_components(resolved)
+    meal.kind = "composed"
+    meal.calories = totals.calories
+    meal.protein = totals.protein
+    meal.carbs = totals.carbs
+    meal.fat = totals.fat
+
+
 def create_meal(
     db: Session,
     user_id: str,
@@ -268,9 +368,6 @@ def create_meal(
         raise HTTPException(status_code=400, detail="Name is required")
 
     if items:
-        food_ids = [food_id for food_id, _quantity in items]
-        if len(food_ids) != len(set(food_ids)):
-            raise HTTPException(status_code=400, detail="Each food can appear once in a meal")
         row = SavedMealRow(
             id=str(uuid.uuid4()),
             user_id=user_id,
@@ -285,27 +382,7 @@ def create_meal(
         )
         db.add(row)
         db.flush()
-        components: list[tuple[SavedFoodRow, float]] = []
-        for index, (food_id, quantity) in enumerate(items):
-            food = get_owned_food(db, user_id, food_id)
-            if food is None:
-                raise HTTPException(status_code=404, detail=f"Food not found: {food_id}")
-            item = SavedMealItemRow(
-                id=str(uuid.uuid4()),
-                meal_id=row.id,
-                food_id=food.id,
-                quantity=quantity,
-                sort_order=index,
-            )
-            item.food = food
-            db.add(item)
-            row.items.append(item)
-            components.append((food, quantity))
-        totals = sum_components(components)
-        row.calories = totals.calories
-        row.protein = totals.protein
-        row.carbs = totals.carbs
-        row.fat = totals.fat
+        _apply_meal_items(db, user_id, row, items)
     else:
         row = SavedMealRow(
             id=str(uuid.uuid4()),
@@ -326,6 +403,63 @@ def create_meal(
     if loaded is None:
         raise HTTPException(status_code=404, detail="Meal not found")
     return _meal_out(loaded)
+
+
+def update_meal(db: Session, user_id: str, meal_id: str, updates: dict) -> dict:
+    row = _load_meal(db, user_id, meal_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Meal not found")
+
+    has_items = "items" in updates and updates["items"] is not None
+    macro_keys: list[str] = []
+    for field in _MACRO_FIELDS:
+        if field not in updates:
+            continue
+        if updates[field] is None:
+            raise HTTPException(status_code=422, detail=f"{field} cannot be null")
+        macro_keys.append(field)
+
+    if has_items and row.kind != "composed":
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot set items on a manual meal; update macros instead",
+        )
+    if macro_keys and row.kind == "composed":
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot set macros directly on composed meals; update items instead",
+        )
+
+    if "name" in updates:
+        row.name = _clean_name(updates["name"])
+    if "description" in updates:
+        row.description = updates["description"]
+    if has_items:
+        _apply_meal_items(db, user_id, row, updates["items"])
+    else:
+        for field in macro_keys:
+            setattr(row, field, updates[field])
+
+    db.commit()
+    loaded = _load_meal(db, user_id, meal_id)
+    if loaded is None:
+        raise HTTPException(status_code=404, detail="Meal not found")
+    return _meal_out(loaded)
+
+
+def delete_meal(db: Session, user_id: str, meal_id: str) -> None:
+    row = get_owned_meal(db, user_id, meal_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Meal not found")
+    db.query(LogEntryRow).filter(
+        LogEntryRow.user_id == user_id,
+        LogEntryRow.saved_meal_id == meal_id,
+    ).update(
+        {LogEntryRow.saved_meal_id: None},
+        synchronize_session=False,
+    )
+    db.delete(row)
+    db.commit()
 
 
 def log_meal(

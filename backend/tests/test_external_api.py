@@ -59,6 +59,10 @@ def test_info_and_docs_are_public(client) -> None:
     assert "POST /api/external/quick-log" in body
     assert "POST /api/external/log-food" in body
     assert "POST /api/external/meals" in body
+    assert "PATCH /api/external/foods/{foodId}" in body
+    assert "DELETE /api/external/foods/{foodId}" in body
+    assert "PATCH /api/external/meals/{mealId}" in body
+    assert "DELETE /api/external/meals/{mealId}" in body
     assert "POST /api/external/log-meal" in body
     assert "DELETE /api/external/entries/{entryId}" in body
     assert "PUT /api/external/weight" in body
@@ -699,3 +703,252 @@ def test_weight_put_keeps_notes_and_photos_and_reports_averages(client, auth_hea
     assert too_light.status_code == 400
     future = client.get("/api/external/weight", headers=headers, params={"date": "2099-01-01"})
     assert future.status_code == 400
+
+
+def _save_food(client, headers, name: str, calories: int, protein: float = 10, carbs: float = 0, fat: float = 1) -> dict:
+    response = client.post(
+        "/api/external/foods",
+        headers=headers,
+        json={
+            "name": name,
+            "description": f"{name} notes",
+            "calories": calories,
+            "protein": protein,
+            "carbs": carbs,
+            "fat": fat,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_update_and_delete_food(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    chicken = _save_food(client, headers, "Chicken", 100, protein=20, carbs=0, fat=2)
+    rice = _save_food(client, headers, "Rice", 80, protein=2, carbs=18, fat=0)
+
+    meal = client.post(
+        "/api/external/meals",
+        headers=headers,
+        json={
+            "name": "Bowl",
+            "items": [
+                {"foodId": chicken["id"], "quantity": 1},
+                {"foodId": rice["id"], "quantity": 1},
+            ],
+        },
+    )
+    assert meal.status_code == 201, meal.text
+    meal_id = meal.json()["id"]
+    assert meal.json()["kind"] == "composed"
+    assert meal.json()["calories"] == 180
+
+    logged = client.post(
+        "/api/external/log-food",
+        headers=headers,
+        json={"foodId": chicken["id"], "servings": 1, "slot": "lunch", "date": "2026-09-20"},
+    )
+    assert logged.status_code == 201, logged.text
+    entry_id = logged.json()["id"]
+
+    updated = client.patch(
+        f"/api/external/foods/{chicken['id']}",
+        headers=headers,
+        json={"description": "grilled", "calories": 150},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["name"] == "Chicken"
+    assert updated.json()["description"] == "grilled"
+    assert updated.json()["calories"] == 150
+    assert updated.json()["protein"] == 20
+
+    meals = client.get("/api/external/meals", headers=headers).json()
+    bowl = next(item for item in meals if item["id"] == meal_id)
+    assert bowl["calories"] == 230
+
+    entry = client.get("/api/entries", headers=auth_headers, params={"date": "2026-09-20"}).json()[0]
+    assert entry["id"] == entry_id
+    assert entry["calories"] == 100
+
+    cleared = client.patch(
+        f"/api/external/foods/{chicken['id']}",
+        headers=headers,
+        json={"description": None},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["description"] is None
+    assert cleared.json()["calories"] == 150
+
+    blocked = client.delete(f"/api/external/foods/{rice['id']}", headers=headers)
+    assert blocked.status_code == 409
+    conflict = blocked.json()["detail"]
+    assert conflict["affectedMealIds"] == [meal_id]
+    assert conflict["affectedMealNames"] == ["Bowl"]
+
+    removed = client.delete(f"/api/external/foods/{rice['id']}?confirm=true", headers=headers)
+    assert removed.status_code == 204
+    meals_after = client.get("/api/external/meals", headers=headers).json()
+    bowl_after = next(item for item in meals_after if item["id"] == meal_id)
+    assert bowl_after["calories"] == 150
+    assert bowl_after["items"] == [{"foodId": chicken["id"], "foodName": "Chicken", "quantity": 1}]
+
+    only = client.delete(f"/api/external/foods/{chicken['id']}?confirm=true", headers=headers)
+    assert only.status_code == 204
+    assert client.get("/api/external/meals", headers=headers).json() == []
+    assert client.get("/api/external/foods", headers=headers).json() == []
+    still_logged = client.get("/api/entries", headers=auth_headers, params={"date": "2026-09-20"}).json()[0]
+    assert still_logged["calories"] == 100
+
+    missing = client.delete(f"/api/external/foods/{uuid.uuid4()}", headers=headers)
+    assert missing.status_code == 404
+    other_headers = register_user(client, "food-edit-other@example.com")
+    other_key = issue_key(client, other_headers)
+    foreign_food = _save_food(client, external_headers(other_key), "Other", 50)
+    foreign_patch = client.patch(
+        f"/api/external/foods/{foreign_food['id']}",
+        headers=headers,
+        json={"calories": 60},
+    )
+    assert foreign_patch.status_code == 404
+    foreign_delete = client.delete(f"/api/external/foods/{foreign_food['id']}", headers=headers)
+    assert foreign_delete.status_code == 404
+
+
+def test_update_and_delete_manual_and_composed_meals(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    manual = client.post(
+        "/api/external/meals",
+        headers=headers,
+        json={
+            "name": "Pasta",
+            "description": "restaurant",
+            "calories": 700,
+            "protein": 25,
+            "carbs": 80,
+            "fat": 28,
+        },
+    )
+    assert manual.status_code == 201, manual.text
+    manual_body = manual.json()
+    assert manual_body["kind"] == "manual"
+    manual_id = manual_body["id"]
+
+    patched = client.patch(
+        f"/api/external/meals/{manual_id}",
+        headers=headers,
+        json={"description": "updated estimate", "calories": 650, "name": "  Pasta bowl  "},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["name"] == "Pasta bowl"
+    assert patched.json()["description"] == "updated estimate"
+    assert patched.json()["calories"] == 650
+    assert patched.json()["protein"] == 25
+    assert patched.json()["kind"] == "manual"
+
+    rejected_items = client.patch(
+        f"/api/external/meals/{manual_id}",
+        headers=headers,
+        json={"items": [{"foodId": str(uuid.uuid4()), "quantity": 1}]},
+    )
+    assert rejected_items.status_code == 422
+
+    chicken = _save_food(client, headers, "Chicken", 100, protein=20, carbs=1, fat=2)
+    rice = _save_food(client, headers, "Rice", 80, protein=2, carbs=16, fat=1)
+    composed = client.post(
+        "/api/external/meals",
+        headers=headers,
+        json={
+            "name": "Chicken rice",
+            "description": "lunch",
+            "items": [
+                {"foodId": chicken["id"], "quantity": 1},
+                {"foodId": rice["id"], "quantity": 1},
+            ],
+        },
+    )
+    assert composed.status_code == 201, composed.text
+    composed_id = composed.json()["id"]
+    assert composed.json()["calories"] == 180
+
+    logged = client.post(
+        "/api/external/log-meal",
+        headers=headers,
+        json={"mealId": composed_id, "servings": 1, "slot": "dinner", "date": "2026-09-21"},
+    )
+    assert logged.status_code == 201, logged.text
+
+    changed = client.patch(
+        f"/api/external/meals/{composed_id}",
+        headers=headers,
+        json={
+            "description": "bigger rice",
+            "items": [
+                {"foodId": chicken["id"], "quantity": 1},
+                {"foodId": rice["id"], "quantity": 2},
+            ],
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    body = changed.json()
+    assert body["description"] == "bigger rice"
+    assert body["kind"] == "composed"
+    assert body["calories"] == 260
+    assert body["items"] == [
+        {"foodId": chicken["id"], "foodName": "Chicken", "quantity": 1},
+        {"foodId": rice["id"], "foodName": "Rice", "quantity": 2},
+    ]
+    entry = client.get("/api/entries", headers=auth_headers, params={"date": "2026-09-21"}).json()[0]
+    assert entry["calories"] == 180
+    assert entry["savedMealId"] == composed_id
+
+    macros_rejected = client.patch(
+        f"/api/external/meals/{composed_id}",
+        headers=headers,
+        json={"calories": 100},
+    )
+    assert macros_rejected.status_code == 422
+
+    duplicate = client.patch(
+        f"/api/external/meals/{composed_id}",
+        headers=headers,
+        json={
+            "items": [
+                {"foodId": chicken["id"], "quantity": 1},
+                {"foodId": chicken["id"], "quantity": 0.5},
+            ]
+        },
+    )
+    assert duplicate.status_code == 400
+    unchanged = next(
+        item for item in client.get("/api/external/meals", headers=headers).json() if item["id"] == composed_id
+    )
+    assert unchanged["calories"] == 260
+
+    missing_food = client.patch(
+        f"/api/external/meals/{composed_id}",
+        headers=headers,
+        json={"items": [{"foodId": str(uuid.uuid4()), "quantity": 1}]},
+    )
+    assert missing_food.status_code == 404
+
+    deleted = client.delete(f"/api/external/meals/{composed_id}", headers=headers)
+    assert deleted.status_code == 204
+    entry_after = client.get("/api/entries", headers=auth_headers, params={"date": "2026-09-21"}).json()[0]
+    assert entry_after["calories"] == 180
+    assert entry_after["savedMealId"] is None
+    assert client.delete(f"/api/external/meals/{composed_id}", headers=headers).status_code == 404
+
+    other_headers = register_user(client, "meal-edit-other@example.com")
+    other_key = issue_key(client, other_headers)
+    foreign = client.patch(
+        f"/api/external/meals/{manual_id}",
+        headers=external_headers(other_key),
+        json={"calories": 100},
+    )
+    assert foreign.status_code == 404
+    assert client.delete(f"/api/external/meals/{manual_id}", headers=external_headers(other_key)).status_code == 404
+    still = client.get("/api/external/meals", headers=headers).json()
+    pasta = next(item for item in still if item["id"] == manual_id)
+    assert pasta["calories"] == 650
