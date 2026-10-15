@@ -21,18 +21,6 @@ jobs:
           enable-cache: true
 
       - name: Backend tests
-        env:
-          POSTGRES_DB: health_tracker
-          POSTGRES_USER: health_tracker
-          POSTGRES_PASSWORD: health_tracker
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5432"
-          SETTINGS_ENCRYPTION_KEY: test-encryption-key-test-encryption-key
-          JWT_SECRET_KEY: test-secret-test-secret-test-secret
-          JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "15"
-          JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
-          CORS_ORIGINS: http://localhost:3000
-          COOKIE_SECURE: "false"
         run: |
           uv sync --project backend --all-groups
           uv run --project backend pytest
