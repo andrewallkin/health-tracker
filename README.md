@@ -97,11 +97,10 @@ cd frontend && npm test
 
 ## Production deployment
 
-Pushing to `main` triggers [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml):
+Deploys are driven by the VPS control panel:
 
-1. Build and push backend/frontend Docker images to Docker Hub
-2. Deploy to VPS via SSH with `docker-compose.yml`
-3. Run Alembic migrations inside the backend container
+1. Pushing to `main` triggers [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), which runs backend tests then builds and pushes the `backend`/`frontend` images to Docker Hub (`andrewallkin/health-tracker`)
+2. The control panel pulls the new images (tag chosen in the panel), runs migrations via `bash /app/run_migrations.sh` in the `backend` container, and starts the stack from `docker-compose.yml`
 
 Production uses an external Postgres network (`postgres-net`) and GCS for photo storage. See `.env.example` for all production variables.
 

@@ -200,6 +200,6 @@ One check-in per user per date: weight, notes, progress photos (up to multiple, 
 
 PRs: backend pytest + frontend test/lint/tsc (`.github/workflows/ci.yml`).
 
-Push to `main`: build Docker images, deploy to VPS, run migrations (`.github/workflows/deploy.yml`).
+Push to `main`: run backend tests, build and push Docker images to Docker Hub (`.github/workflows/deploy.yml`); the VPS control panel handles deploys (image pull, migrations, up).
 
 Production uses external Postgres (`postgres-net`) and GCS for photos.

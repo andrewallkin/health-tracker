@@ -11,6 +11,7 @@ COPY pyproject.toml uv.lock ./
 COPY backend/pyproject.toml backend/
 
 RUN uv sync --project backend --frozen --no-dev
+ENV PATH="/app/.venv/bin:$PATH"
 
 COPY backend ./backend
 COPY backend/run_migrations.sh ./run_migrations.sh
