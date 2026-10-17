@@ -22,7 +22,7 @@ jobs:
 
       - name: Backend tests
         run: |
-          uv sync --project backend --all-groups
+          uv sync --project backend --frozen --all-groups
           uv run --project backend pytest
 
   build:
