@@ -10,6 +10,7 @@ from ...database import get_db
 from ...db_models import UserRow
 from ..external_auth import get_user_from_external_api_key
 from ..external_service import (
+    build_health_range,
     build_month,
     build_today,
     build_week,
@@ -259,6 +260,16 @@ def get_month(
     resolved_year = current.year if year is None else year
     resolved_month = current.month if month is None else month
     return build_month(db, user.id, resolved_year, resolved_month)
+
+
+@router.get("/health")
+def get_health_range(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None, alias="to"),
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    return build_health_range(db, user.id, from_ or "", to or "")
 
 
 @router.get("/weight")

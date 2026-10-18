@@ -18,7 +18,7 @@ from ..db_models import (
     SavedMealRow,
     utcnow,
 )
-from .external_time import add_days, today_key
+from .external_time import add_days, parse_date_key, today_key
 from .health_service import GarminNotConnectedError, require_garmin_connected, resolve_dates, resolve_day
 from .mappers import get_daily_goal, get_or_create_app_settings
 from .compose import (
@@ -756,6 +756,43 @@ def build_month(db: Session, user_id: str, year: int, month: int) -> dict:
     dates = [date(year, month, day_number).isoformat() for day_number in range(1, day_count + 1)]
     nutrition, energy = _period_summary(db, user_id, dates)
     return {"year": year, "month": month, "nutrition": nutrition, "energy": energy}
+
+
+MAX_HEALTH_RANGE_DAYS = 90
+
+
+def _date_span(from_key: str, to_key: str) -> list[str]:
+    start = parse_date_key(from_key, field="from")
+    end = parse_date_key(to_key, field="to")
+    if start > end:
+        raise HTTPException(status_code=400, detail="Invalid date range")
+    span_days = (end - start).days + 1
+    if span_days > MAX_HEALTH_RANGE_DAYS:
+        raise HTTPException(status_code=400, detail="Date range exceeds 90 days")
+    return [(start + timedelta(days=offset)).isoformat() for offset in range(span_days)]
+
+
+def _range_day_out(date_str: str, day: DailyHealth | None, today: str) -> dict:
+    if date_str > today:
+        return {"date": date_str, "status": "unavailable", "reason": "future"}
+    if day is None:
+        return {"date": date_str, "status": "unavailable", "reason": "missing"}
+    return {"date": day.date, **_health_block(day, None)}
+
+
+def build_health_range(db: Session, user_id: str, from_key: str, to_key: str) -> dict:
+    span = _date_span(from_key, to_key)
+    reason, days = _health_for_dates(db, user_id, span)
+    if reason == "disconnected":
+        return {"from": from_key, "to": to_key, "status": "unavailable",
+                "reason": "disconnected", "days": []}
+    today = today_key()
+    return {
+        "from": from_key,
+        "to": to_key,
+        "status": "ready",
+        "days": [_range_day_out(date_str, days.get(date_str), today) for date_str in span],
+    }
 
 
 def _weights_by_date(db: Session, user_id: str) -> dict[str, float]:

@@ -4,6 +4,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from backend.database import get_db
 from backend.db_models import CheckInPhotoRow, CheckInRow, GarminDailyHealthRow
 from backend.tests.conftest import register_user
@@ -39,6 +41,38 @@ def close_db(gen) -> None:
         next(gen)
     except StopIteration:
         pass
+
+
+@pytest.fixture()
+def disconnected_garmin(client):
+    headers = register_user(client, "range-off@example.com")
+    client.headers.update(external_headers(issue_key(client, headers)))
+
+
+@pytest.fixture()
+def seeded_garmin_days(client):
+    headers = register_user(client, "range@example.com")
+    client.headers.update(external_headers(issue_key(client, headers)))
+    user_id = client.get("/api/users/me", headers=headers).json()["id"]
+    connect_garmin(client, headers)
+    db, gen = db_session(client)
+    try:
+        for day in ("2026-09-01", "2026-09-02", "2026-09-03"):
+            payload = health_payload(day, steps=12000)
+            payload["sleepScore"] = 71
+            db.add(
+                GarminDailyHealthRow(
+                    user_id=user_id,
+                    date=day,
+                    payload=payload,
+                    fetched_at=datetime.utcnow(),
+                    is_complete=True,
+                )
+            )
+        db.commit()
+    finally:
+        db.close()
+        close_db(gen)
 
 
 def test_external_docs_ship_inside_the_backend_package() -> None:
@@ -1020,3 +1054,27 @@ def test_update_and_delete_manual_and_composed_meals(client, auth_headers) -> No
     still = client.get("/api/external/meals", headers=headers).json()
     pasta = next(item for item in still if item["id"] == manual_id)
     assert pasta["calories"] == 650
+
+
+def test_health_range_returns_rows_and_validation(client, seeded_garmin_days) -> None:
+    resp = client.get("/api/external/health?from=2026-09-01&to=2026-09-03")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["from"] == "2026-09-01" and body["to"] == "2026-09-03"
+    assert [d["date"] for d in body["days"]] == ["2026-09-01", "2026-09-02", "2026-09-03"]
+    assert body["days"][0]["sleep"]["score"] == 71
+
+
+def test_health_range_validation(client, disconnected_garmin) -> None:
+    assert client.get("/api/external/health?from=2026-09-03&to=2026-09-01").status_code == 400
+    assert client.get("/api/external/health?from=2026-09-01&to=2026-09-01").status_code == 200
+    assert client.get("/api/external/health?from=nonsense&to=2026-09-01").status_code == 400
+    too_long = f"from=2026-01-01&to=2026-04-01"  # > 90 days
+    assert client.get(f"/api/external/health?{too_long}").status_code == 400
+
+
+def test_health_range_disconnected(client, disconnected_garmin) -> None:
+    resp = client.get("/api/external/health?from=2026-09-01&to=2026-09-02")
+    assert resp.status_code == 200
+    assert resp.json() == {"from": "2026-09-01", "to": "2026-09-02",
+                           "status": "unavailable", "reason": "disconnected", "days": []}
