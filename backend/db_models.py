@@ -272,3 +272,22 @@ class GarminDailyHealthRow(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "date", name="uq_garmin_daily_health_user_date"),
     )
+
+
+class GarminMetricSnapshotRow(Base):
+    __tablename__ = "garmin_metric_snapshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    snapshot_date: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "snapshot_date", name="uq_garmin_metric_snapshots_user_date"),
+    )

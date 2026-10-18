@@ -1,11 +1,23 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import pytest
+from fastapi import HTTPException
+
+from backend.api import external_service
+from backend.api.external_time import today_key
+from backend.api.routes import external
 from backend.database import get_db
-from backend.db_models import CheckInPhotoRow, CheckInRow, GarminDailyHealthRow
+from backend.db_models import (
+    CheckInPhotoRow,
+    CheckInRow,
+    DayStatusRow,
+    GarminDailyHealthRow,
+    GarminMetricSnapshotRow,
+)
 from backend.tests.conftest import register_user
 from backend.tests.test_health_api import connect_garmin, health_payload
 
@@ -39,6 +51,38 @@ def close_db(gen) -> None:
         next(gen)
     except StopIteration:
         pass
+
+
+@pytest.fixture()
+def disconnected_garmin(client):
+    headers = register_user(client, "range-off@example.com")
+    client.headers.update(external_headers(issue_key(client, headers)))
+
+
+@pytest.fixture()
+def seeded_garmin_days(client):
+    headers = register_user(client, "range@example.com")
+    client.headers.update(external_headers(issue_key(client, headers)))
+    user_id = client.get("/api/users/me", headers=headers).json()["id"]
+    connect_garmin(client, headers)
+    db, gen = db_session(client)
+    try:
+        for day in ("2026-09-01", "2026-09-02", "2026-09-03"):
+            payload = health_payload(day, steps=12000)
+            payload["sleepScore"] = 71
+            db.add(
+                GarminDailyHealthRow(
+                    user_id=user_id,
+                    date=day,
+                    payload=payload,
+                    fetched_at=datetime.utcnow(),
+                    is_complete=True,
+                )
+            )
+        db.commit()
+    finally:
+        db.close()
+        close_db(gen)
 
 
 def test_external_docs_ship_inside_the_backend_package() -> None:
@@ -582,7 +626,23 @@ def test_today_returns_cached_burn_and_activities(client, auth_headers) -> None:
     api_key = issue_key(client, auth_headers)
     user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
     connect_garmin(client, auth_headers)
-    payload = health_payload("2026-09-21")
+    payload = health_payload("2026-09-21", steps=12000)
+    payload["stepGoal"] = 10000
+    payload["restingHr"] = 44
+    payload["avgRestingHr7d"] = 45
+    payload["sleepHours"] = 7.4
+    payload["deepSleepHours"] = 1.2
+    payload["remSleepHours"] = 1.8
+    payload["lightSleepHours"] = 4.1
+    payload["sleepAvgHr"] = 48
+    payload["sleepScore"] = 71
+    payload["hrvWeeklyAvg"] = 58
+    payload["trainingReadiness"] = {
+        "score": 64, "level": "MODERATE", "sleepScore": 71,
+        "sleepFactorPercent": 56, "recoveryTime": 1, "recoveryTimeHours": 0.0,
+        "recoveryFactorPercent": 99, "acwrFactorPercent": 94, "acuteLoad": 395,
+    }
+    payload["bodyBattery"] = {"charged": 59, "drained": 41, "highest": 81, "lowest": 22}
     payload["activities"] = [
         {
             "id": "act-1",
@@ -591,7 +651,7 @@ def test_today_returns_cached_burn_and_activities(client, auth_headers) -> None:
             "startTime": "07:00",
             "durationMin": 30,
             "calories": 280,
-            "avgHr": 150,
+            "avgHr": 148,
             "distanceKm": 5.0,
         }
     ]
@@ -623,6 +683,16 @@ def test_today_returns_cached_burn_and_activities(client, auth_headers) -> None:
     assert health["activeCalories"] == 400
     assert health["bmrCalories"] == 1700
     assert "reason" not in health
+    assert health["restingHr"] == 44
+    assert health["restingHr7dAvg"] == 45
+    assert health["minHr"] == 48 and health["maxHr"] == 145
+    assert health["trainingReadiness"] == payload["trainingReadiness"]
+    assert health["bodyBattery"] == payload["bodyBattery"]
+    assert health["hrv"] == {"value": 61, "status": "balanced", "weeklyAvg": 58}
+    assert health["sleep"] == {"totalHours": 7.4, "deepHours": 1.2, "remHours": 1.8,
+                               "lightHours": 4.1, "avgHr": 48, "score": 71}
+    assert health["steps"] == 12000 and health["stepGoal"] == 10000
+    assert health["activities"][0]["avgHr"] == 148
     assert health["activities"] == [
         {
             "id": "act-1",
@@ -631,9 +701,51 @@ def test_today_returns_cached_burn_and_activities(client, auth_headers) -> None:
             "startTime": "07:00",
             "durationMin": 30,
             "calories": 280,
+            "avgHr": 148,
             "distanceKm": 5.0,
         }
     ]
+
+
+def test_today_emits_none_blocks_for_legacy_cached_row(client, auth_headers) -> None:
+    set_goal(client, auth_headers)
+    api_key = issue_key(client, auth_headers)
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+    connect_garmin(client, auth_headers)
+    db, gen = db_session(client)
+    try:
+        db.add(
+            GarminDailyHealthRow(
+                user_id=user_id,
+                date="2026-09-21",
+                payload=health_payload("2026-09-21", steps=900),
+                fetched_at=datetime.utcnow(),
+                is_complete=True,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+        close_db(gen)
+
+    response = client.get(
+        "/api/external/today",
+        headers=external_headers(api_key),
+        params={"date": "2026-09-21"},
+    )
+    assert response.status_code == 200, response.text
+    health = response.json()["health"]
+    assert health["status"] == "ready"
+    assert health["trainingReadiness"] is None
+    assert health["trainingStatus"] is None
+    assert health["bodyBattery"] is None
+    assert health["stress"] is None
+    assert health["enduranceScore"] is None
+    assert health["intensityMinutes"] is None
+    assert health["hillScore"] is None
+    assert health["fitnessAge"] is None
+    assert health["respiration"] is None
+    assert health["spo2"] is None
 
 
 def test_weight_put_keeps_notes_and_photos_and_reports_averages(client, auth_headers) -> None:
@@ -703,6 +815,109 @@ def test_weight_put_keeps_notes_and_photos_and_reports_averages(client, auth_hea
     assert too_light.status_code == 400
     future = client.get("/api/external/weight", headers=headers, params={"date": "2099-01-01"})
     assert future.status_code == 400
+
+
+def test_day_status_get_defaults_to_today_and_requires_auth(client, auth_headers) -> None:
+    assert client.get("/api/external/day-status").status_code == 401
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    response = client.get("/api/external/day-status", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"date": today_key(), "notTracked": False}
+
+
+def test_day_status_put_true_creates_row_for_today(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+
+    response = client.put("/api/external/day-status", headers=headers, json={"notTracked": True})
+    assert response.status_code == 200, response.text
+    assert response.json() == {"date": today_key(), "notTracked": True}
+
+    db, gen = db_session(client)
+    try:
+        rows = db.query(DayStatusRow).filter_by(user_id=user_id, status_date=today_key()).all()
+    finally:
+        db.close()
+        close_db(gen)
+    assert len(rows) == 1
+
+    today = client.get("/api/external/day-status", headers=headers)
+    assert today.status_code == 200, today.text
+    assert today.json() == {"date": today_key(), "notTracked": True}
+
+
+def test_day_status_put_false_removes_row_and_is_idempotent(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+
+    marked = client.put("/api/external/day-status", headers=headers, json={"notTracked": True})
+    assert marked.status_code == 200, marked.text
+
+    cleared = client.put("/api/external/day-status", headers=headers, json={"notTracked": False})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json() == {"date": today_key(), "notTracked": False}
+
+    db, gen = db_session(client)
+    try:
+        count = db.query(DayStatusRow).filter_by(user_id=user_id, status_date=today_key()).count()
+    finally:
+        db.close()
+        close_db(gen)
+    assert count == 0
+
+    again = client.put("/api/external/day-status", headers=headers, json={"notTracked": False})
+    assert again.status_code == 200, again.text
+    assert again.json() == {"date": today_key(), "notTracked": False}
+
+
+def test_day_status_put_explicit_past_date_creates_row(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+
+    response = client.put(
+        "/api/external/day-status",
+        headers=headers,
+        json={"date": "2026-09-01", "notTracked": True},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"date": "2026-09-01", "notTracked": True}
+
+    db, gen = db_session(client)
+    try:
+        rows = db.query(DayStatusRow).filter_by(user_id=user_id, status_date="2026-09-01").all()
+    finally:
+        db.close()
+        close_db(gen)
+    assert len(rows) == 1
+
+
+def test_day_status_rejects_future_and_malformed_dates(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    future = client.put(
+        "/api/external/day-status",
+        headers=headers,
+        json={"date": "2099-01-01", "notTracked": True},
+    )
+    assert future.status_code == 400
+    assert future.json()["detail"] == "Cannot mark future dates as not tracked"
+
+    malformed = client.get("/api/external/day-status", headers=headers, params={"date": "2026-13"})
+    assert malformed.status_code == 400
+    assert malformed.json()["detail"] == "Invalid date"
+
+    calendar_invalid = client.put(
+        "/api/external/day-status",
+        headers=headers,
+        json={"date": "2026-02-30", "notTracked": True},
+    )
+    assert calendar_invalid.status_code == 400
+    assert calendar_invalid.json()["detail"] == "Invalid date"
 
 
 def _save_food(client, headers, name: str, calories: int, protein: float = 10, carbs: float = 0, fat: float = 1) -> dict:
@@ -952,3 +1167,231 @@ def test_update_and_delete_manual_and_composed_meals(client, auth_headers) -> No
     still = client.get("/api/external/meals", headers=headers).json()
     pasta = next(item for item in still if item["id"] == manual_id)
     assert pasta["calories"] == 650
+
+
+def test_health_range_returns_rows_and_validation(client, seeded_garmin_days) -> None:
+    resp = client.get("/api/external/health?from=2026-09-01&to=2026-09-03")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["from"] == "2026-09-01" and body["to"] == "2026-09-03"
+    assert [d["date"] for d in body["days"]] == ["2026-09-01", "2026-09-02", "2026-09-03"]
+    assert body["days"][0]["sleep"]["score"] == 71
+
+
+def test_health_range_validation(client, disconnected_garmin) -> None:
+    assert client.get("/api/external/health?from=2026-09-03&to=2026-09-01").status_code == 400
+    assert client.get("/api/external/health?from=2026-09-01&to=2026-09-01").status_code == 200
+    assert client.get("/api/external/health?from=nonsense&to=2026-09-01").status_code == 400
+    too_long = f"from=2026-01-01&to=2026-04-01"  # > 90 days
+    assert client.get(f"/api/external/health?{too_long}").status_code == 400
+
+
+def test_health_range_rejects_calendar_invalid_dates(client, disconnected_garmin) -> None:
+    assert client.get("/api/external/health?from=2026-02-30&to=2026-03-02").status_code == 400
+    assert client.get("/api/external/health?from=2026-13-01&to=2026-13-02").status_code == 400
+
+
+def test_health_range_disconnected(client, disconnected_garmin) -> None:
+    resp = client.get("/api/external/health?from=2026-09-01&to=2026-09-02")
+    assert resp.status_code == 200
+    assert resp.json() == {"from": "2026-09-01", "to": "2026-09-02",
+                           "status": "unavailable", "reason": "disconnected", "days": []}
+
+
+def test_health_range_past_days_are_cache_only_without_fetch_or_cache_writes(
+    client, seeded_garmin_days, monkeypatch
+) -> None:
+    def bomb_build_fetch_day(_settings_row):
+        raise AssertionError("live fetch must not run for past-only spans")
+
+    monkeypatch.setattr(
+        "backend.api.external_service.build_fetch_day", bomb_build_fetch_day
+    )
+    resp = client.get("/api/external/health?from=2026-08-01&to=2026-08-05")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ready"
+    assert [(day["date"], day["reason"]) for day in body["days"]] == [
+        (f"2026-08-0{offset}", "missing") for offset in range(1, 6)
+    ]
+    db, gen = db_session(client)
+    try:
+        assert db.query(GarminDailyHealthRow).count() == 3  # only the seeded days
+    finally:
+        db.close()
+        close_db(gen)
+
+
+def test_health_range_today_is_live_fetched_and_uncached_past_days_stay_missing(
+    client, seeded_garmin_days, monkeypatch
+) -> None:
+    fetched_dates: list[str] = []
+
+    def fake_build_fetch_day(_settings_row):
+        def fetch_day(date_str: str) -> dict:
+            fetched_dates.append(date_str)
+            return health_payload(date_str, steps=7000)
+
+        return fetch_day, lambda _db, _row: None
+
+    monkeypatch.setattr(
+        "backend.api.external_service.build_fetch_day", fake_build_fetch_day
+    )
+    today = today_key()
+    start = (date.fromisoformat(today) - timedelta(days=6)).isoformat()
+
+    resp = client.get(f"/api/external/health?from={start}&to={today}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ready"
+    assert [day["status"] for day in body["days"]] == ["unavailable"] * 6 + ["ready"]
+    assert fetched_dates == [today]  # only today went live
+    today_row = body["days"][-1]
+    assert today_row["date"] == today
+    assert today_row["steps"] == 7000
+    db, gen = db_session(client)
+    try:
+        assert db.query(GarminDailyHealthRow).count() == 4  # 3 seeded + today
+    finally:
+        db.close()
+        close_db(gen)
+
+
+def test_health_range_future_only_days_reported_as_future(client, seeded_garmin_days) -> None:
+    start = (date.fromisoformat(today_key()) + timedelta(days=2)).isoformat()
+    end = (date.fromisoformat(today_key()) + timedelta(days=9)).isoformat()
+
+    resp = client.get(f"/api/external/health?from={start}&to={end}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ready"
+    assert [day["reason"] for day in body["days"]] == ["future"] * 8
+
+
+def test_snapshot_fetch_helpers_normalize(monkeypatch):
+    class FakeApi:
+        def get_race_predictions(self):
+            return {"calendarDate": "2026-10-17", "time5K": 1384, "time10K": 2935,
+                    "timeHalfMarathon": 6667, "timeMarathon": 14516}
+        def get_lactate_threshold(self):
+            return {"speed_and_heart_rate": {"speed": 0.35833233000000003,
+                    "heartRate": 179, "calendarDate": "2026-08-24T17:37:34.267"}}
+    assert external_service.fetch_race_predictions_snapshot(FakeApi()) == {
+        "time5K": 1384, "time10K": 2935,
+        "timeHalfMarathon": 6667, "timeMarathon": 14516}
+    assert external_service.fetch_lactate_threshold_snapshot(FakeApi()) == {
+        "speedMps": 3.5833, "paceSecPerKm": 279,
+        "heartRate": 179, "asOf": "2026-08-24T17:37:34.267"}
+
+def test_snapshot_helpers_partial_failure(monkeypatch):
+    class DeadApi:
+        def get_race_predictions(self):
+            raise RuntimeError("boom")
+        def get_lactate_threshold(self):
+            return {}
+    # each helper independently returns None on failure/empty
+    assert external_service.fetch_race_predictions_snapshot(DeadApi()) is None
+    assert external_service.fetch_lactate_threshold_snapshot(DeadApi()) is None
+
+def test_list_snapshots_read_only(client, seeded_garmin_days):
+    listed = client.get("/api/external/health-snapshots")
+    assert listed.status_code == 200
+    assert listed.json() == []  # no POST route exists — server-side captures only
+    methods = {r.path: set(r.methods) for r in external.router.routes}
+    assert "POST" not in methods.get("/external/health-snapshots", set())
+
+
+def test_create_snapshot_requires_connected_garmin(client, auth_headers):
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+    db, gen = db_session(client)
+    try:
+        with pytest.raises(HTTPException) as excinfo:
+            external_service.create_health_snapshot(db, user_id)
+    finally:
+        db.close()
+        close_db(gen)
+    assert excinfo.value.status_code == 503
+    assert excinfo.value.detail == "Garmin is not connected"
+
+
+def test_create_snapshot_returns_502_when_both_metrics_fail(
+    client, auth_headers, monkeypatch
+):
+    class DeadApi:
+        def get_race_predictions(self):
+            raise RuntimeError("boom")
+        def get_lactate_threshold(self):
+            return {}
+
+    def fake_client(_tokens):
+        return DeadApi()
+
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+    db, gen = db_session(client)
+    try:
+        connect_garmin(client, auth_headers)
+        monkeypatch.setattr(
+            "backend.api.external_service.garmin_from_tokens", fake_client
+        )
+        with pytest.raises(HTTPException) as excinfo:
+            external_service.create_health_snapshot(db, user_id)
+    finally:
+        db.close()
+        close_db(gen)
+    assert excinfo.value.status_code == 502
+    assert excinfo.value.detail == "Garmin returned no snapshot data"
+
+
+def test_create_snapshot_duplicate_capture_is_data_safe_and_refreshes(
+    client, auth_headers, monkeypatch
+):
+    class FakeApi:
+        def get_race_predictions(self):
+            return {"calendarDate": "2026-10-17", "time5K": 1384, "time10K": 2935,
+                    "timeHalfMarathon": 6667, "timeMarathon": 14516}
+        def get_lactate_threshold(self):
+            return {"speed_and_heart_rate": {"speed": 0.35833233000000003,
+                    "heartRate": 179, "calendarDate": "2026-08-24T17:37:34.267"}}
+
+    def fake_client(_tokens):
+        return FakeApi()
+
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+    db, gen = db_session(client)
+    try:
+        connect_garmin(client, auth_headers)
+        monkeypatch.setattr(
+            "backend.api.external_service.garmin_from_tokens", fake_client
+        )
+        snapshot_date = today_key()
+        existing = GarminMetricSnapshotRow(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            snapshot_date=snapshot_date,
+            payload={"racePredictions": None, "lactateThreshold": None},
+            fetched_at=datetime(2020, 1, 1),
+        )
+        db.add(existing)
+        db.commit()
+        existing_id = existing.id
+        old_fetched_at = existing.fetched_at.isoformat()
+
+        result = external_service.create_health_snapshot(db, user_id)
+
+        assert result["id"] == existing_id  # re-queried row, not a raise
+        assert result["date"] == snapshot_date
+        assert result["racePredictions"] == {
+            "time5K": 1384, "time10K": 2935,
+            "timeHalfMarathon": 6667, "timeMarathon": 14516}
+        assert result["lactateThreshold"] == {
+            "speedMps": 3.5833, "paceSecPerKm": 279,
+            "heartRate": 179, "asOf": "2026-08-24T17:37:34.267"}
+        assert result["fetchedAt"] > old_fetched_at  # payload refreshed
+        assert (
+            db.query(GarminMetricSnapshotRow).filter_by(user_id=user_id).count() == 1
+        )
+    finally:
+        db.close()
+        close_db(gen)

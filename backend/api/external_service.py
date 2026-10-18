@@ -6,19 +6,24 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_settings
+from ..crypto import decrypt_api_key
 from ..db_models import (
     CheckInRow,
     DayStatusRow,
+    GarminDailyHealthRow,
+    GarminMetricSnapshotRow,
     LogEntryRow,
     SavedFoodRow,
     SavedMealItemRow,
     SavedMealRow,
     utcnow,
 )
-from .external_time import add_days, today_key
+from ..garmin_client import _dict, _number, garmin_from_tokens
+from .external_time import add_days, parse_date_key, today_key
 from .health_service import GarminNotConnectedError, require_garmin_connected, resolve_dates, resolve_day
 from .mappers import get_daily_goal, get_or_create_app_settings
 from .compose import (
@@ -545,6 +550,7 @@ def _activity_out(activity) -> dict:
         "startTime": activity.startTime,
         "durationMin": activity.durationMin,
         "calories": activity.calories,
+        "avgHr": activity.avgHr,
         "distanceKm": activity.distanceKm,
     }
 
@@ -595,7 +601,32 @@ def _health_block(day: DailyHealth | None, reason: str | None) -> dict:
         "totalCalories": day.totalCalories,
         "activeCalories": day.activeCalories,
         "bmrCalories": day.bmrCalories,
+        "steps": day.steps,
+        "stepGoal": day.stepGoal,
+        "restingHr": day.restingHr,
+        "minHr": day.minHr,
+        "maxHr": day.maxHr,
+        "restingHr7dAvg": day.avgRestingHr7d,
+        "hrv": {"value": day.hrv, "status": day.hrvStatus, "weeklyAvg": day.hrvWeeklyAvg},
+        "sleep": {
+            "totalHours": day.sleepHours,
+            "deepHours": day.deepSleepHours,
+            "remHours": day.remSleepHours,
+            "lightHours": day.lightSleepHours,
+            "avgHr": day.sleepAvgHr,
+            "score": day.sleepScore,
+        },
         "activities": [_activity_out(activity) for activity in day.activities],
+        "trainingReadiness": day.trainingReadiness,
+        "trainingStatus": day.trainingStatus,
+        "bodyBattery": day.bodyBattery,
+        "stress": day.stress,
+        "enduranceScore": day.enduranceScore,
+        "intensityMinutes": day.intensityMinutes,
+        "hillScore": day.hillScore,
+        "fitnessAge": day.fitnessAge,
+        "respiration": day.respiration,
+        "spo2": day.spo2,
     }
 
 
@@ -625,6 +656,34 @@ def build_today(db: Session, user_id: str, date_key: str) -> dict:
         "weightKg": check_in.weight_kg if check_in is not None else None,
         "health": _health_block(days.get(date_key), reason),
     }
+
+
+def get_day_status_external(db: Session, user_id: str, date_key: str) -> dict:
+    return {
+        "date": date_key,
+        "notTracked": get_day_status_for_date(db, user_id, date_key) is not None,
+    }
+
+
+def set_day_status_external(db: Session, user_id: str, date_key: str, not_tracked: bool) -> dict:
+    parsed = parse_date_key(date_key)
+    if parsed.isoformat() > today_key():
+        raise HTTPException(status_code=400, detail="Cannot mark future dates as not tracked")
+    row = get_day_status_for_date(db, user_id, date_key)
+    if not_tracked:
+        if row is None:
+            row = DayStatusRow(
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                status_date=date_key,
+            )
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+    elif row is not None:
+        db.delete(row)
+        db.commit()
+    return {"date": date_key, "notTracked": not_tracked}
 
 
 def _counted_days(
@@ -730,6 +789,155 @@ def build_month(db: Session, user_id: str, year: int, month: int) -> dict:
     dates = [date(year, month, day_number).isoformat() for day_number in range(1, day_count + 1)]
     nutrition, energy = _period_summary(db, user_id, dates)
     return {"year": year, "month": month, "nutrition": nutrition, "energy": energy}
+
+
+MAX_HEALTH_RANGE_DAYS = 90
+
+
+def _date_span(from_key: str, to_key: str) -> list[str]:
+    start = parse_date_key(from_key, field="from")
+    end = parse_date_key(to_key, field="to")
+    if start > end:
+        raise HTTPException(status_code=400, detail="Invalid date range")
+    span_days = (end - start).days + 1
+    if span_days > MAX_HEALTH_RANGE_DAYS:
+        raise HTTPException(status_code=400, detail="Date range exceeds 90 days")
+    return [(start + timedelta(days=offset)).isoformat() for offset in range(span_days)]
+
+
+def _range_day_out(date_str: str, day: DailyHealth | None, today: str) -> dict:
+    if date_str > today:
+        return {"date": date_str, "status": "unavailable", "reason": "future"}
+    if day is None:
+        return {"date": date_str, "status": "unavailable", "reason": "missing"}
+    return {"date": day.date, **_health_block(day, None)}
+
+
+def build_health_range(db: Session, user_id: str, from_key: str, to_key: str) -> dict:
+    span = _date_span(from_key, to_key)
+    settings_row = get_or_create_app_settings(db, user_id)
+    try:
+        require_garmin_connected(settings_row)
+    except GarminNotConnectedError:
+        return {"from": from_key, "to": to_key, "status": "unavailable",
+                "reason": "disconnected", "days": []}
+    today = today_key()
+    past = [date_str for date_str in span if date_str < today]
+    rows = (
+        db.query(GarminDailyHealthRow)
+        .filter(
+            GarminDailyHealthRow.user_id == user_id,
+            GarminDailyHealthRow.date.in_(past),
+            GarminDailyHealthRow.is_complete.is_(True),
+        )
+        .all()
+        if past
+        else []
+    )
+    days = {row.date: DailyHealth.model_validate(row.payload) for row in rows}
+    if today in span:
+        # Cache-only for past days: a first-ever 90-day request must not burst
+        # the Garmin API. Only today goes through the live fetch path.
+        _reason, today_days = _health_for_dates(db, user_id, [today])
+        days[today] = today_days.get(today)
+    return {
+        "from": from_key,
+        "to": to_key,
+        "status": "ready",
+        "days": [_range_day_out(date_str, days.get(date_str), today) for date_str in span],
+    }
+
+
+def fetch_race_predictions_snapshot(api) -> dict | None:
+    try:
+        raw = api.get_race_predictions()
+    except Exception:  # noqa: BLE001 — snapshot capture is best-effort per metric
+        return None
+    if not isinstance(raw, dict) or not raw.get("time5K"):
+        return None
+    return {"time5K": _number(raw.get("time5K")), "time10K": _number(raw.get("time10K")),
+            "timeHalfMarathon": _number(raw.get("timeHalfMarathon")),
+            "timeMarathon": _number(raw.get("timeMarathon"))}
+
+
+def fetch_lactate_threshold_snapshot(api) -> dict | None:
+    try:
+        raw = api.get_lactate_threshold()
+    except Exception:  # noqa: BLE001 — snapshot capture is best-effort per metric
+        return None
+    entry = _dict(_dict(raw).get("speed_and_heart_rate"))
+    speed_raw = entry.get("speed")
+    if not speed_raw and not entry.get("heartRate"):
+        return None
+    speed_mps = round(speed_raw * 10, 4) if isinstance(speed_raw, (int, float)) else None
+    return {
+        "speedMps": speed_mps,
+        "paceSecPerKm": round(1000 / speed_mps) if speed_mps else None,
+        "heartRate": round(_number(entry.get("heartRate"))) or None,
+        "asOf": entry.get("calendarDate"),
+    }
+
+
+def _snapshot_out(row: GarminMetricSnapshotRow) -> dict:
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    return {
+        "id": row.id,
+        "date": row.snapshot_date,
+        "racePredictions": payload.get("racePredictions"),
+        "lactateThreshold": payload.get("lactateThreshold"),
+        "fetchedAt": row.fetched_at.isoformat(),
+    }
+
+
+def create_health_snapshot(db: Session, user_id: str) -> dict:
+    settings_row = get_or_create_app_settings(db, user_id)
+    try:
+        require_garmin_connected(settings_row)
+    except GarminNotConnectedError as exc:
+        raise HTTPException(status_code=503, detail="Garmin is not connected") from exc
+    api = garmin_from_tokens(decrypt_api_key(settings_row.garmin_tokens_encrypted or ""))
+    race = fetch_race_predictions_snapshot(api)
+    lactate = fetch_lactate_threshold_snapshot(api)
+    if race is None and lactate is None:
+        raise HTTPException(status_code=502, detail="Garmin returned no snapshot data")
+    snapshot_date = today_key()
+    payload = {"racePredictions": race, "lactateThreshold": lactate}
+    try:
+        row = GarminMetricSnapshotRow(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            snapshot_date=snapshot_date,
+            payload=payload,
+            fetched_at=utcnow(),
+        )
+        db.add(row)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        row = (
+            db.query(GarminMetricSnapshotRow)
+            .filter_by(user_id=user_id, snapshot_date=snapshot_date)
+            .one()
+        )
+        row.payload = payload
+        row.fetched_at = utcnow()
+        db.commit()
+    db.refresh(row)
+    return _snapshot_out(row)
+
+
+def list_health_snapshots(db: Session, user_id: str, limit: int = 52) -> list[dict]:
+    rows = (
+        db.query(GarminMetricSnapshotRow)
+        .filter(GarminMetricSnapshotRow.user_id == user_id)
+        .order_by(
+            GarminMetricSnapshotRow.snapshot_date.desc(),
+            GarminMetricSnapshotRow.fetched_at.desc(),
+        )
+        .limit(limit)
+        .all()
+    )
+    return [_snapshot_out(row) for row in rows]
 
 
 def _weights_by_date(db: Session, user_id: str) -> dict[str, float]:

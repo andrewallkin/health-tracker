@@ -18,6 +18,7 @@ from backend.api.health_service import (
     resolve_dates,
     today_in_timezone,
 )
+from backend.api.schemas import DailyHealth
 from backend.database import Base
 from backend.db_models import GarminDailyHealthRow
 
@@ -381,3 +382,16 @@ def test_resolve_dates_clamps_non_positive_concurrency(db: Session) -> None:
     assert second_started_before_first_finished is False
     assert [day.date for day in days] == dates
     assert errors == []
+
+
+def test_daily_health_accepts_legacy_payload():
+    legacy = {"date": "2026-09-01", "steps": 100, "stepGoal": 10000,
+              "totalCalories": 2000, "activeCalories": 500, "bmrCalories": 1500,
+              "restingHr": 50, "minHr": 40, "maxHr": 90, "avgRestingHr7d": 50,
+              "sleepHours": 7.0, "deepSleepHours": 1.0, "remSleepHours": 1.0,
+              "lightSleepHours": 5.0, "sleepAvgHr": 50, "hrvStatus": "unavailable"}
+    day = DailyHealth.model_validate(legacy)
+    assert day.trainingReadiness is None
+    assert day.trainingStatus is None
+    assert day.bodyBattery is None and day.stress is None
+    assert day.enduranceScore is None and day.spo2 is None

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,7 @@ from ...database import get_db
 from ...db_models import UserRow
 from ..external_auth import get_user_from_external_api_key
 from ..external_service import (
+    build_health_range,
     build_month,
     build_today,
     build_week,
@@ -19,17 +20,21 @@ from ..external_service import (
     delete_entry,
     delete_food,
     delete_meal,
+    get_day_status_external,
     list_foods,
+    list_health_snapshots,
     list_meals,
     log_food,
     log_meal,
     quick_log,
+    set_day_status_external,
     update_food,
     update_meal,
     upsert_weight,
 )
-from ..external_time import current_hhmm, johannesburg_now, resolve_optional_date
+from ..external_time import current_hhmm, johannesburg_now, resolve_optional_date, today_key
 from ..schemas_external import (
+    ExternalDayStatusWrite,
     ExternalFoodCreate,
     ExternalFoodUpdate,
     ExternalLogFood,
@@ -51,8 +56,6 @@ _INFO_PATH = _BACKEND_ROOT / "docs" / "external-api-info.txt"
 def _read_packaged(path: Path, label: str) -> str:
     if path.is_file():
         return path.read_text(encoding="utf-8")
-    from fastapi import HTTPException
-
     raise HTTPException(status_code=404, detail=f"{label} not found")
 
 
@@ -261,6 +264,16 @@ def get_month(
     return build_month(db, user.id, resolved_year, resolved_month)
 
 
+@router.get("/health")
+def get_health_range(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None, alias="to"),
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    return build_health_range(db, user.id, from_ or "", to or "")
+
+
 @router.get("/weight")
 def get_weight(
     date: str | None = Query(default=None),
@@ -277,3 +290,33 @@ def put_weight(
     user: UserRow = Depends(get_user_from_external_api_key),
 ) -> dict:
     return upsert_weight(db, user.id, resolve_optional_date(payload.date), payload.weightKg)
+
+
+@router.get("/day-status")
+def get_day_status(
+    date: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    return get_day_status_external(db, user.id, resolve_optional_date(date))
+
+
+@router.put("/day-status")
+def put_day_status(
+    payload: ExternalDayStatusWrite,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    date_key = payload.date if payload.date is not None else today_key()
+    return set_day_status_external(db, user.id, date_key, payload.notTracked)
+
+
+@router.get("/health-snapshots")
+def get_health_snapshots(
+    limit: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> list[dict]:
+    if limit is not None and not 1 <= limit <= 52:
+        raise HTTPException(status_code=400, detail="Invalid limit")
+    return list_health_snapshots(db, user.id, 52 if limit is None else limit)
