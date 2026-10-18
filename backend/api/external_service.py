@@ -14,6 +14,7 @@ from ..crypto import decrypt_api_key
 from ..db_models import (
     CheckInRow,
     DayStatusRow,
+    GarminDailyHealthRow,
     GarminMetricSnapshotRow,
     LogEntryRow,
     SavedFoodRow,
@@ -786,11 +787,31 @@ def _range_day_out(date_str: str, day: DailyHealth | None, today: str) -> dict:
 
 def build_health_range(db: Session, user_id: str, from_key: str, to_key: str) -> dict:
     span = _date_span(from_key, to_key)
-    reason, days = _health_for_dates(db, user_id, span)
-    if reason == "disconnected":
+    settings_row = get_or_create_app_settings(db, user_id)
+    try:
+        require_garmin_connected(settings_row)
+    except GarminNotConnectedError:
         return {"from": from_key, "to": to_key, "status": "unavailable",
                 "reason": "disconnected", "days": []}
     today = today_key()
+    past = [date_str for date_str in span if date_str < today]
+    rows = (
+        db.query(GarminDailyHealthRow)
+        .filter(
+            GarminDailyHealthRow.user_id == user_id,
+            GarminDailyHealthRow.date.in_(past),
+            GarminDailyHealthRow.is_complete.is_(True),
+        )
+        .all()
+        if past
+        else []
+    )
+    days = {row.date: DailyHealth.model_validate(row.payload) for row in rows}
+    if today in span:
+        # Cache-only for past days: a first-ever 90-day request must not burst
+        # the Garmin API. Only today goes through the live fetch path.
+        _reason, today_days = _health_for_dates(db, user_id, [today])
+        days[today] = today_days.get(today)
     return {
         "from": from_key,
         "to": to_key,
@@ -833,7 +854,7 @@ def _snapshot_out(row: GarminMetricSnapshotRow) -> dict:
     payload = row.payload if isinstance(row.payload, dict) else {}
     return {
         "id": row.id,
-        "snapshotDate": row.snapshot_date,
+        "date": row.snapshot_date,
         "racePredictions": payload.get("racePredictions"),
         "lactateThreshold": payload.get("lactateThreshold"),
         "fetchedAt": row.fetched_at.isoformat(),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -1094,6 +1094,78 @@ def test_health_range_disconnected(client, disconnected_garmin) -> None:
                            "status": "unavailable", "reason": "disconnected", "days": []}
 
 
+def test_health_range_past_days_are_cache_only_without_fetch_or_cache_writes(
+    client, seeded_garmin_days, monkeypatch
+) -> None:
+    def bomb_build_fetch_day(_settings_row):
+        raise AssertionError("live fetch must not run for past-only spans")
+
+    monkeypatch.setattr(
+        "backend.api.external_service.build_fetch_day", bomb_build_fetch_day
+    )
+    resp = client.get("/api/external/health?from=2026-08-01&to=2026-08-05")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ready"
+    assert [(day["date"], day["reason"]) for day in body["days"]] == [
+        (f"2026-08-0{offset}", "missing") for offset in range(1, 6)
+    ]
+    db, gen = db_session(client)
+    try:
+        assert db.query(GarminDailyHealthRow).count() == 3  # only the seeded days
+    finally:
+        db.close()
+        close_db(gen)
+
+
+def test_health_range_today_is_live_fetched_and_uncached_past_days_stay_missing(
+    client, seeded_garmin_days, monkeypatch
+) -> None:
+    fetched_dates: list[str] = []
+
+    def fake_build_fetch_day(_settings_row):
+        def fetch_day(date_str: str) -> dict:
+            fetched_dates.append(date_str)
+            return health_payload(date_str, steps=7000)
+
+        return fetch_day, lambda _db, _row: None
+
+    monkeypatch.setattr(
+        "backend.api.external_service.build_fetch_day", fake_build_fetch_day
+    )
+    today = today_key()
+    start = (date.fromisoformat(today) - timedelta(days=6)).isoformat()
+
+    resp = client.get(f"/api/external/health?from={start}&to={today}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ready"
+    assert [day["status"] for day in body["days"]] == ["unavailable"] * 6 + ["ready"]
+    assert fetched_dates == [today]  # only today went live
+    today_row = body["days"][-1]
+    assert today_row["date"] == today
+    assert today_row["steps"] == 7000
+    db, gen = db_session(client)
+    try:
+        assert db.query(GarminDailyHealthRow).count() == 4  # 3 seeded + today
+    finally:
+        db.close()
+        close_db(gen)
+
+
+def test_health_range_future_only_days_reported_as_future(client, seeded_garmin_days) -> None:
+    start = (date.fromisoformat(today_key()) + timedelta(days=2)).isoformat()
+    end = (date.fromisoformat(today_key()) + timedelta(days=9)).isoformat()
+
+    resp = client.get(f"/api/external/health?from={start}&to={end}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ready"
+    assert [day["reason"] for day in body["days"]] == ["future"] * 8
+
+
 def test_snapshot_fetch_helpers_normalize(monkeypatch):
     class FakeApi:
         def get_race_predictions(self):
@@ -1205,7 +1277,7 @@ def test_create_snapshot_duplicate_capture_is_data_safe_and_refreshes(
         result = external_service.create_health_snapshot(db, user_id)
 
         assert result["id"] == existing_id  # re-queried row, not a raise
-        assert result["snapshotDate"] == snapshot_date
+        assert result["date"] == snapshot_date
         assert result["racePredictions"] == {
             "time5K": 1384, "time10K": 2935,
             "timeHalfMarathon": 6667, "timeMarathon": 14516}

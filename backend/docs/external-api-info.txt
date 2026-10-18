@@ -61,7 +61,7 @@ GET /api/external/month?year=&month=
 Calendar month. Same averaging rules as week. Defaults to the current month.
 
 GET /api/external/health?from=&to=
-Garmin health, one row per date, oldest first: calories, steps, resting and min/max heart rate, HRV, sleep, activities, training readiness and status, body battery, stress, endurance score, intensity minutes, hill score, fitness age, respiration, and SpO2. Sleep hours are floats; recoveryTime is minutes and recoveryTimeHours is hours. Both dates are required. The range is capped at 90 days. Future dates say reason "future"; days without data say "missing"; a disconnected Garmin returns status "unavailable" and an empty days list.
+Garmin health, one row per date, oldest first: calories, steps, resting and min/max heart rate, HRV, sleep, activities, training readiness and status, body battery, stress, endurance score, intensity minutes, hill score, fitness age, respiration, and SpO2. Sleep hours are floats; recoveryTime is minutes and recoveryTimeHours is hours. Both dates are required. The range is capped at 90 days. Past days are served from the server's cache only: days not populated yet say reason "missing" until scripts/backfill_garmin_health.py backfills them; only today is fetched live. Future dates say reason "future"; a disconnected Garmin returns status "unavailable" and an empty days list.
 
 GET /api/external/health-snapshots
 Weekly Garmin snapshots: race predictions (times in seconds) and lactate threshold (speed in m/s, pace in seconds per km, heart rate in bpm). Captured by the server every Monday around 07:00 SAST. Read-only. Optional ?limit= 1-52, default 52, newest first.
