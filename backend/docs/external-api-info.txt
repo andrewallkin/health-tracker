@@ -60,6 +60,12 @@ Monday-Sunday week containing date. Nutrition averages include only days with lo
 GET /api/external/month?year=&month=
 Calendar month. Same averaging rules as week. Defaults to the current month.
 
+GET /api/external/health?from=&to=
+Garmin health, one row per date, oldest first: calories, steps, resting and min/max heart rate, HRV, sleep, activities, training readiness and status, body battery, stress, endurance score, intensity minutes, hill score, fitness age, respiration, and SpO2. Sleep hours are floats; recoveryTime is minutes and recoveryTimeHours is hours. Both dates are required. The range is capped at 90 days. Future dates say reason "future"; days without data say "missing"; a disconnected Garmin returns status "unavailable" and an empty days list.
+
+GET /api/external/health-snapshots
+Weekly Garmin snapshots: race predictions (times in seconds) and lactate threshold (speed in m/s, pace in seconds per km, heart rate in bpm). Captured by the server every Monday around 07:00 SAST. Read-only. Optional ?limit= 1-52, default 52, newest first.
+
 GET /api/external/weight?date=
 Weigh-in, 7-day average, a 7-day series, a 30-day series, and the change in the 7-day average over 1, 7, 14, and 30 days.
 

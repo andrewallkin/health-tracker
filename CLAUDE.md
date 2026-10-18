@@ -6,7 +6,7 @@ Three main app sections:
 
 - **Food** — log meals, track macros, AI photo/text estimation, day/week/month dashboards
 - **Check-in** — daily weight and progress photos
-- **Health** — Garmin-style activity views (mock data only; live Garmin not wired yet)
+- **Health** — Garmin-style activity views backed by live Garmin daily health data
 
 ## Agent workflow (Superpowers)
 
@@ -34,7 +34,7 @@ Process skills (brainstorming, debugging, planning) come before implementation s
 | `backend/` | FastAPI API, SQLAlchemy models, Alembic migrations, `MacrosEstimator` |
 | `frontend/` | React dashboard (Vite + TypeScript + Tailwind v4) |
 | `notebooks/` | Jupyter demos (Garmin API, food vision) — not connected to the app |
-| `scripts/` | Utility scripts (DB seeding, Garmin demo) |
+| `scripts/` | Utility scripts (DB seeding, Garmin demo, Garmin health backfill) |
 | `tests/fixtures/` | Test images for notebooks and integration tests |
 
 ## Commands
@@ -115,7 +115,7 @@ Dev URLs: **http://localhost:3000** (Docker frontend) or **http://localhost:5173
 
 **Components** by feature: `nutrition/`, `checkin/`, `health/`, `layout/`, `shared/`
 
-**Health section** reads from `frontend/src/data/mockHealth.ts` — not the backend.
+**Health section** reads the backend's `/api/health/*` endpoints via `useHealthData`; `frontend/src/data/mockHealth.ts` only supplies empty-state defaults.
 
 **Styling:** Tailwind v4 with custom theme tokens in `index.css` (`color-scheme: dark`). Use existing surface/macro color tokens; don't add light-mode-only styles.
 
@@ -178,7 +178,6 @@ One check-in per user per date: weight, notes, progress photos (up to multiple, 
 
 **Deferred — do not implement unless asked:**
 
-- Garmin integration / live Health section data
 - Varying daily goals (rest vs training day)
 - Chat / recipe UI
 - PWA, barcode OCR, production infra (nginx/SSL)
