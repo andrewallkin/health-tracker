@@ -5,11 +5,18 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 from backend.api import external_service
+from backend.api.external_time import today_key
 from backend.api.routes import external
 from backend.database import get_db
-from backend.db_models import CheckInPhotoRow, CheckInRow, GarminDailyHealthRow
+from backend.db_models import (
+    CheckInPhotoRow,
+    CheckInRow,
+    GarminDailyHealthRow,
+    GarminMetricSnapshotRow,
+)
 from backend.tests.conftest import register_user
 from backend.tests.test_health_api import connect_garmin, health_payload
 
@@ -1118,3 +1125,97 @@ def test_list_snapshots_read_only(client, seeded_garmin_days):
     assert listed.json() == []  # no POST route exists — server-side captures only
     methods = {r.path: set(r.methods) for r in external.router.routes}
     assert "POST" not in methods.get("/external/health-snapshots", set())
+
+
+def test_create_snapshot_requires_connected_garmin(client, auth_headers):
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+    db, gen = db_session(client)
+    try:
+        with pytest.raises(HTTPException) as excinfo:
+            external_service.create_health_snapshot(db, user_id)
+    finally:
+        db.close()
+        close_db(gen)
+    assert excinfo.value.status_code == 503
+    assert excinfo.value.detail == "Garmin is not connected"
+
+
+def test_create_snapshot_returns_502_when_both_metrics_fail(
+    client, auth_headers, monkeypatch
+):
+    class DeadApi:
+        def get_race_predictions(self):
+            raise RuntimeError("boom")
+        def get_lactate_threshold(self):
+            return {}
+
+    def fake_client(_tokens):
+        return DeadApi()
+
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+    db, gen = db_session(client)
+    try:
+        connect_garmin(client, auth_headers)
+        monkeypatch.setattr(
+            "backend.api.external_service.garmin_from_tokens", fake_client
+        )
+        with pytest.raises(HTTPException) as excinfo:
+            external_service.create_health_snapshot(db, user_id)
+    finally:
+        db.close()
+        close_db(gen)
+    assert excinfo.value.status_code == 502
+    assert excinfo.value.detail == "Garmin returned no snapshot data"
+
+
+def test_create_snapshot_duplicate_capture_is_data_safe_and_refreshes(
+    client, auth_headers, monkeypatch
+):
+    class FakeApi:
+        def get_race_predictions(self):
+            return {"calendarDate": "2026-10-17", "time5K": 1384, "time10K": 2935,
+                    "timeHalfMarathon": 6667, "timeMarathon": 14516}
+        def get_lactate_threshold(self):
+            return {"speed_and_heart_rate": {"speed": 0.35833233000000003,
+                    "heartRate": 179, "calendarDate": "2026-08-24T17:37:34.267"}}
+
+    def fake_client(_tokens):
+        return FakeApi()
+
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+    db, gen = db_session(client)
+    try:
+        connect_garmin(client, auth_headers)
+        monkeypatch.setattr(
+            "backend.api.external_service.garmin_from_tokens", fake_client
+        )
+        snapshot_date = today_key()
+        existing = GarminMetricSnapshotRow(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            snapshot_date=snapshot_date,
+            payload={"racePredictions": None, "lactateThreshold": None},
+            fetched_at=datetime(2020, 1, 1),
+        )
+        db.add(existing)
+        db.commit()
+        existing_id = existing.id
+        old_fetched_at = existing.fetched_at.isoformat()
+
+        result = external_service.create_health_snapshot(db, user_id)
+
+        assert result["id"] == existing_id  # re-queried row, not a raise
+        assert result["snapshotDate"] == snapshot_date
+        assert result["racePredictions"] == {
+            "time5K": 1384, "time10K": 2935,
+            "timeHalfMarathon": 6667, "timeMarathon": 14516}
+        assert result["lactateThreshold"] == {
+            "speedMps": 3.5833, "paceSecPerKm": 279,
+            "heartRate": 179, "asOf": "2026-08-24T17:37:34.267"}
+        assert result["fetchedAt"] > old_fetched_at  # payload refreshed
+        assert (
+            db.query(GarminMetricSnapshotRow).filter_by(user_id=user_id).count() == 1
+        )
+    finally:
+        db.close()
+        close_db(gen)
