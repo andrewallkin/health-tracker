@@ -298,6 +298,16 @@ class DailyHealth(BaseModel):
     hrv: int | None = None
     hrvStatus: HrvStatus
     hrvWeeklyAvg: int | None = None
+    trainingReadiness: dict | None = None
+    trainingStatus: dict | None = None
+    bodyBattery: dict | None = None
+    stress: dict | None = None
+    enduranceScore: dict | None = None
+    intensityMinutes: dict | None = None
+    hillScore: dict | None = None
+    fitnessAge: dict | None = None
+    respiration: dict | None = None
+    spo2: dict | None = None
     activities: list[HealthActivity] = Field(default_factory=list)
 
 

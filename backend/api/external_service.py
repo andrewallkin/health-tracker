@@ -612,6 +612,16 @@ def _health_block(day: DailyHealth | None, reason: str | None) -> dict:
             "score": day.sleepScore,
         },
         "activities": [_activity_out(activity) for activity in day.activities],
+        "trainingReadiness": day.trainingReadiness,
+        "trainingStatus": day.trainingStatus,
+        "bodyBattery": day.bodyBattery,
+        "stress": day.stress,
+        "enduranceScore": day.enduranceScore,
+        "intensityMinutes": day.intensityMinutes,
+        "hillScore": day.hillScore,
+        "fitnessAge": day.fitnessAge,
+        "respiration": day.respiration,
+        "spo2": day.spo2,
     }
 
 

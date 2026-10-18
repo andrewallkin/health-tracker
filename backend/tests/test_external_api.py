@@ -593,6 +593,12 @@ def test_today_returns_cached_burn_and_activities(client, auth_headers) -> None:
     payload["sleepAvgHr"] = 48
     payload["sleepScore"] = 71
     payload["hrvWeeklyAvg"] = 58
+    payload["trainingReadiness"] = {
+        "score": 64, "level": "MODERATE", "sleepScore": 71,
+        "sleepFactorPercent": 56, "recoveryTime": 1, "recoveryTimeHours": 0.0,
+        "recoveryFactorPercent": 99, "acwrFactorPercent": 94, "acuteLoad": 395,
+    }
+    payload["bodyBattery"] = {"charged": 59, "drained": 41, "highest": 81, "lowest": 22}
     payload["activities"] = [
         {
             "id": "act-1",
@@ -635,6 +641,9 @@ def test_today_returns_cached_burn_and_activities(client, auth_headers) -> None:
     assert "reason" not in health
     assert health["restingHr"] == 44
     assert health["restingHr7dAvg"] == 45
+    assert health["minHr"] == 48 and health["maxHr"] == 145
+    assert health["trainingReadiness"] == payload["trainingReadiness"]
+    assert health["bodyBattery"] == payload["bodyBattery"]
     assert health["hrv"] == {"value": 61, "status": "balanced", "weeklyAvg": 58}
     assert health["sleep"] == {"totalHours": 7.4, "deepHours": 1.2, "remHours": 1.8,
                                "lightHours": 4.1, "avgHr": 48, "score": 71}
@@ -652,6 +661,47 @@ def test_today_returns_cached_burn_and_activities(client, auth_headers) -> None:
             "distanceKm": 5.0,
         }
     ]
+
+
+def test_today_emits_none_blocks_for_legacy_cached_row(client, auth_headers) -> None:
+    set_goal(client, auth_headers)
+    api_key = issue_key(client, auth_headers)
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+    connect_garmin(client, auth_headers)
+    db, gen = db_session(client)
+    try:
+        db.add(
+            GarminDailyHealthRow(
+                user_id=user_id,
+                date="2026-09-21",
+                payload=health_payload("2026-09-21", steps=900),
+                fetched_at=datetime.utcnow(),
+                is_complete=True,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+        close_db(gen)
+
+    response = client.get(
+        "/api/external/today",
+        headers=external_headers(api_key),
+        params={"date": "2026-09-21"},
+    )
+    assert response.status_code == 200, response.text
+    health = response.json()["health"]
+    assert health["status"] == "ready"
+    assert health["trainingReadiness"] is None
+    assert health["trainingStatus"] is None
+    assert health["bodyBattery"] is None
+    assert health["stress"] is None
+    assert health["enduranceScore"] is None
+    assert health["intensityMinutes"] is None
+    assert health["hillScore"] is None
+    assert health["fitnessAge"] is None
+    assert health["respiration"] is None
+    assert health["spo2"] is None
 
 
 def test_weight_put_keeps_notes_and_photos_and_reports_averages(client, auth_headers) -> None:
