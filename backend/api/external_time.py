@@ -30,7 +30,10 @@ def current_hhmm(now: datetime | None = None) -> str:
 def parse_date_key(value: str, field: str = "date") -> date:
     if not _DATE_PATTERN.match(value):
         raise HTTPException(status_code=400, detail=f"Invalid {field}")
-    return date.fromisoformat(value)
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid {field}") from exc
 
 
 def require_not_future(value: date, *, now: datetime | None = None) -> None:

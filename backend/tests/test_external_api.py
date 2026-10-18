@@ -1073,6 +1073,11 @@ def test_health_range_validation(client, disconnected_garmin) -> None:
     assert client.get(f"/api/external/health?{too_long}").status_code == 400
 
 
+def test_health_range_rejects_calendar_invalid_dates(client, disconnected_garmin) -> None:
+    assert client.get("/api/external/health?from=2026-02-30&to=2026-03-02").status_code == 400
+    assert client.get("/api/external/health?from=2026-13-01&to=2026-13-02").status_code == 400
+
+
 def test_health_range_disconnected(client, disconnected_garmin) -> None:
     resp = client.get("/api/external/health?from=2026-09-01&to=2026-09-02")
     assert resp.status_code == 200
