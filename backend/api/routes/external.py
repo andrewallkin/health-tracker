@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,7 @@ from ..external_service import (
     delete_food,
     delete_meal,
     list_foods,
+    list_health_snapshots,
     list_meals,
     log_food,
     log_meal,
@@ -52,8 +53,6 @@ _INFO_PATH = _BACKEND_ROOT / "docs" / "external-api-info.txt"
 def _read_packaged(path: Path, label: str) -> str:
     if path.is_file():
         return path.read_text(encoding="utf-8")
-    from fastapi import HTTPException
-
     raise HTTPException(status_code=404, detail=f"{label} not found")
 
 
@@ -288,3 +287,14 @@ def put_weight(
     user: UserRow = Depends(get_user_from_external_api_key),
 ) -> dict:
     return upsert_weight(db, user.id, resolve_optional_date(payload.date), payload.weightKg)
+
+
+@router.get("/health-snapshots")
+def get_health_snapshots(
+    limit: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> list[dict]:
+    if limit is not None and not 1 <= limit <= 52:
+        raise HTTPException(status_code=400, detail="Invalid limit")
+    return list_health_snapshots(db, user.id, 52 if limit is None else limit)

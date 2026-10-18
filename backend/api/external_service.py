@@ -6,18 +6,22 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_settings
+from ..crypto import decrypt_api_key
 from ..db_models import (
     CheckInRow,
     DayStatusRow,
+    GarminMetricSnapshotRow,
     LogEntryRow,
     SavedFoodRow,
     SavedMealItemRow,
     SavedMealRow,
     utcnow,
 )
+from ..garmin_client import _dict, _number, garmin_from_tokens
 from .external_time import add_days, parse_date_key, today_key
 from .health_service import GarminNotConnectedError, require_garmin_connected, resolve_dates, resolve_day
 from .mappers import get_daily_goal, get_or_create_app_settings
@@ -793,6 +797,98 @@ def build_health_range(db: Session, user_id: str, from_key: str, to_key: str) ->
         "status": "ready",
         "days": [_range_day_out(date_str, days.get(date_str), today) for date_str in span],
     }
+
+
+def fetch_race_predictions_snapshot(api) -> dict | None:
+    try:
+        raw = api.get_race_predictions()
+    except Exception:  # noqa: BLE001 — snapshot capture is best-effort per metric
+        return None
+    if not isinstance(raw, dict) or not raw.get("time5K"):
+        return None
+    return {"time5K": _number(raw.get("time5K")), "time10K": _number(raw.get("time10K")),
+            "timeHalfMarathon": _number(raw.get("timeHalfMarathon")),
+            "timeMarathon": _number(raw.get("timeMarathon"))}
+
+
+def fetch_lactate_threshold_snapshot(api) -> dict | None:
+    try:
+        raw = api.get_lactate_threshold()
+    except Exception:  # noqa: BLE001 — snapshot capture is best-effort per metric
+        return None
+    entry = _dict(_dict(raw).get("speed_and_heart_rate"))
+    speed_raw = entry.get("speed")
+    if not speed_raw and not entry.get("heartRate"):
+        return None
+    speed_mps = round(speed_raw * 10, 4) if isinstance(speed_raw, (int, float)) else None
+    return {
+        "speedMps": speed_mps,
+        "paceSecPerKm": round(1000 / speed_mps) if speed_mps else None,
+        "heartRate": round(_number(entry.get("heartRate"))) or None,
+        "asOf": entry.get("calendarDate"),
+    }
+
+
+def _snapshot_out(row: GarminMetricSnapshotRow) -> dict:
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    return {
+        "id": row.id,
+        "snapshotDate": row.snapshot_date,
+        "racePredictions": payload.get("racePredictions"),
+        "lactateThreshold": payload.get("lactateThreshold"),
+        "fetchedAt": row.fetched_at.isoformat(),
+    }
+
+
+def create_health_snapshot(db: Session, user_id: str) -> dict:
+    settings_row = get_or_create_app_settings(db, user_id)
+    try:
+        require_garmin_connected(settings_row)
+    except GarminNotConnectedError as exc:
+        raise HTTPException(status_code=503, detail="Garmin is not connected") from exc
+    api = garmin_from_tokens(decrypt_api_key(settings_row.garmin_tokens_encrypted or ""))
+    race = fetch_race_predictions_snapshot(api)
+    lactate = fetch_lactate_threshold_snapshot(api)
+    if race is None and lactate is None:
+        raise HTTPException(status_code=502, detail="Garmin returned no snapshot data")
+    snapshot_date = today_key()
+    payload = {"racePredictions": race, "lactateThreshold": lactate}
+    try:
+        row = GarminMetricSnapshotRow(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            snapshot_date=snapshot_date,
+            payload=payload,
+            fetched_at=utcnow(),
+        )
+        db.add(row)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        row = (
+            db.query(GarminMetricSnapshotRow)
+            .filter_by(user_id=user_id, snapshot_date=snapshot_date)
+            .one()
+        )
+        row.payload = payload
+        row.fetched_at = utcnow()
+        db.commit()
+    db.refresh(row)
+    return _snapshot_out(row)
+
+
+def list_health_snapshots(db: Session, user_id: str, limit: int = 52) -> list[dict]:
+    rows = (
+        db.query(GarminMetricSnapshotRow)
+        .filter(GarminMetricSnapshotRow.user_id == user_id)
+        .order_by(
+            GarminMetricSnapshotRow.snapshot_date.desc(),
+            GarminMetricSnapshotRow.fetched_at.desc(),
+        )
+        .limit(limit)
+        .all()
+    )
+    return [_snapshot_out(row) for row in rows]
 
 
 def _weights_by_date(db: Session, user_id: str) -> dict[str, float]:

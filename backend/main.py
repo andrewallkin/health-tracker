@@ -27,6 +27,8 @@ from .config import get_settings
 async def lifespan(_app: FastAPI):
     settings = get_settings()
     settings.meal_photos_dir.mkdir(parents=True, exist_ok=True)
+    from .api.snapshot_scheduler import start_snapshot_scheduler
+    start_snapshot_scheduler()
     yield
 
 

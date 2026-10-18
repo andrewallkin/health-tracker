@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from backend.api import external_service
+from backend.api.routes import external
 from backend.database import get_db
 from backend.db_models import CheckInPhotoRow, CheckInRow, GarminDailyHealthRow
 from backend.tests.conftest import register_user
@@ -1083,3 +1085,36 @@ def test_health_range_disconnected(client, disconnected_garmin) -> None:
     assert resp.status_code == 200
     assert resp.json() == {"from": "2026-09-01", "to": "2026-09-02",
                            "status": "unavailable", "reason": "disconnected", "days": []}
+
+
+def test_snapshot_fetch_helpers_normalize(monkeypatch):
+    class FakeApi:
+        def get_race_predictions(self):
+            return {"calendarDate": "2026-10-17", "time5K": 1384, "time10K": 2935,
+                    "timeHalfMarathon": 6667, "timeMarathon": 14516}
+        def get_lactate_threshold(self):
+            return {"speed_and_heart_rate": {"speed": 0.35833233000000003,
+                    "heartRate": 179, "calendarDate": "2026-08-24T17:37:34.267"}}
+    assert external_service.fetch_race_predictions_snapshot(FakeApi()) == {
+        "time5K": 1384, "time10K": 2935,
+        "timeHalfMarathon": 6667, "timeMarathon": 14516}
+    assert external_service.fetch_lactate_threshold_snapshot(FakeApi()) == {
+        "speedMps": 3.5833, "paceSecPerKm": 279,
+        "heartRate": 179, "asOf": "2026-08-24T17:37:34.267"}
+
+def test_snapshot_helpers_partial_failure(monkeypatch):
+    class DeadApi:
+        def get_race_predictions(self):
+            raise RuntimeError("boom")
+        def get_lactate_threshold(self):
+            return {}
+    # each helper independently returns None on failure/empty
+    assert external_service.fetch_race_predictions_snapshot(DeadApi()) is None
+    assert external_service.fetch_lactate_threshold_snapshot(DeadApi()) is None
+
+def test_list_snapshots_read_only(client, seeded_garmin_days):
+    listed = client.get("/api/external/health-snapshots")
+    assert listed.status_code == 200
+    assert listed.json() == []  # no POST route exists — server-side captures only
+    methods = {r.path: set(r.methods) for r in external.router.routes}
+    assert "POST" not in methods.get("/external/health-snapshots", set())
