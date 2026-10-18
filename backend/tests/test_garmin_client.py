@@ -13,6 +13,10 @@ from backend.garmin_client import (
     GarminAuthFailure,
     GarminTransientError,
     _garmin_kwargs,
+    _normalize_body_battery,
+    _normalize_stress,
+    _normalize_training_readiness,
+    _normalize_training_status,
     call_with_retry,
     fetch_and_normalize_day,
     garmin_from_tokens,
@@ -173,6 +177,10 @@ def test_fetch_and_normalize_day_maps_summary_sleep_hr_hrv_activities():
     assert day["activities"][0]["type"] == "running"
     assert day["activities"][0]["startTime"] == "07:30"
     assert day["activities"][0]["distanceKm"] == 5.0
+    assert day["trainingReadiness"] is None
+    assert day["trainingStatus"] is None
+    assert day["bodyBattery"] is None
+    assert day["stress"] is None
     DailyHealth.model_validate(day)
 
 
@@ -190,6 +198,10 @@ def test_fetch_and_normalize_day_uses_defaults_when_optional_calls_fail(monkeypa
 
     assert day["hrvStatus"] == "unavailable"
     assert day["activities"] == []
+    assert day["trainingReadiness"] is None
+    assert day["trainingStatus"] is None
+    assert day["bodyBattery"] is None
+    assert day["stress"] is None
     DailyHealth.model_validate(day)
 
 
@@ -202,3 +214,126 @@ def test_fetch_and_normalize_day_raises_when_summary_fails(monkeypatch):
         fetch_and_normalize_day(api, "2026-07-18")
 
     assert api.get_user_summary.call_count == 4
+
+
+READINESS_RAW = [{
+    "userProfilePK": 71924392, "calendarDate": "2026-10-17",
+    "deviceId": 3457521672, "level": "MODERATE", "score": 64,
+    "sleepScore": 71, "sleepScoreFactorPercent": 56,
+    "recoveryTime": 1, "recoveryTimeFactorPercent": 99,
+    "acwrFactorPercent": 94, "acuteLoad": 395,
+}, {
+    "userProfilePK": 71924392, "calendarDate": "2026-10-17",
+    "deviceId": 999, "level": "HIGH", "score": 80,
+    "sleepScore": 80, "sleepScoreFactorPercent": 60,
+    "recoveryTime": 2, "recoveryTimeFactorPercent": 90,
+    "acwrFactorPercent": 90, "acuteLoad": 400, "primaryTrainingDevice": False,
+}]
+
+
+def test_normalize_training_readiness_prefers_primary_device():
+    assert _normalize_training_readiness(READINESS_RAW) == {
+        "score": 64, "level": "MODERATE", "sleepScore": 71,
+        "sleepFactorPercent": 56, "recoveryTime": 1, "recoveryTimeHours": 0.0,
+        "recoveryFactorPercent": 99, "acwrFactorPercent": 94, "acuteLoad": 395,
+    }
+
+
+def test_normalize_training_readiness_recover_time_minutes():
+    entry = dict(READINESS_RAW[0], recoveryTime=4320)
+    result = _normalize_training_readiness([entry])
+    assert result["recoveryTime"] == 4320
+    assert result["recoveryTimeHours"] == 72.0
+
+
+def test_normalize_training_readiness_empty_and_garbage():
+    assert _normalize_training_readiness([]) is None
+    assert _normalize_training_readiness(None) is None
+    assert _normalize_training_readiness("nope") is None
+
+
+STATUS_RAW = {
+    "mostRecentVO2Max": {"generic": {"calendarDate": "2026-10-16",
+        "vo2MaxValue": 53.0, "vo2MaxPreciseValue": 52.8}, "cycling": None},
+    "mostRecentTrainingStatus": {"latestTrainingStatusData": {
+        "3457521672": {"calendarDate": "2026-10-17", "deviceId": 3457521672,
+            "trainingStatus": 4, "trainingStatusFeedbackPhrase": "MAINTAINING_2",
+            "sinceDate": "2026-10-12", "sport": "RUNNING",
+            "primaryTrainingDevice": True, "trainingPaused": False,
+            "acuteTrainingLoadDTO": {
+                "dailyTrainingLoadAcute": 395, "dailyTrainingLoadChronic": 428.0,
+                "dailyAcuteChronicWorkloadRatio": 0.9, "acwrPercent": 38,
+                "acwrStatus": "OPTIMAL"}}}},
+    "mostRecentTrainingLoadBalance": {"metricsTrainingLoadBalanceDTOMap": {
+        "3457521672": {"calendarDate": "2026-10-17", "deviceId": 3457521672,
+            "monthlyLoadAerobicLow": 1290.4142, "monthlyLoadAerobicHigh": 102.12279,
+            "monthlyLoadAnaerobic": 242.85545,
+            "monthlyLoadAerobicLowTargetMin": 405, "monthlyLoadAerobicLowTargetMax": 924,
+            "monthlyLoadAerobicHighTargetMin": 547, "monthlyLoadAerobicHighTargetMax": 1066,
+            "monthlyLoadAnaerobicTargetMin": 173, "monthlyLoadAnaerobicTargetMax": 519,
+            "trainingBalanceFeedbackPhrase": "AEROBIC_HIGH_SHORTAGE",
+            "primaryTrainingDevice": True}}},
+}
+
+
+def test_normalize_training_status_primary_device():
+    assert _normalize_training_status(STATUS_RAW) == {
+        "vo2Max": 53.0, "vo2MaxPrecise": 52.8, "vo2MaxDate": "2026-10-16",
+        "statusCode": 4, "statusPhrase": "MAINTAINING_2", "statusDate": "2026-10-17",
+        "acuteLoad": 395, "chronicLoad": 428.0,
+        "acwr": 0.9, "acwrPercent": 38, "acwrStatus": "OPTIMAL",
+        "loadBalance": {
+            "aerobicLow": 1290.4, "aerobicHigh": 102.1, "anaerobic": 242.9,
+            "aerobicLowTarget": [405, 924], "aerobicHighTarget": [547, 1066],
+            "anaerobicTarget": [173, 519], "feedbackPhrase": "AEROBIC_HIGH_SHORTAGE",
+        },
+    }
+
+
+def test_normalize_training_status_missing_pieces():
+    assert _normalize_training_status({}) is None
+    partial = {"mostRecentTrainingStatus": {"latestTrainingStatusData": {
+        "1": {"calendarDate": "2026-10-17", "trainingStatus": 4}}}}
+    result = _normalize_training_status(partial)
+    assert result["statusCode"] == 4
+    assert result["loadBalance"] is None and result["vo2Max"] is None
+
+
+BODY_BATTERY_RAW = [{"date": "2026-10-17", "charged": 59, "drained": 41,
+                     "bodyBatteryHighestValue": 81, "bodyBatteryLowestValue": 22}]
+
+STRESS_RAW = {"calendarDate": "2026-10-17", "avgStressLevel": 28, "maxStressLevel": 95}
+
+
+def test_normalize_body_battery():
+    raw = [{"date": "2026-10-17", "charged": 59, "drained": 41,
+            "bodyBatteryHighestValue": 81, "bodyBatteryLowestValue": 22}]
+    assert _normalize_body_battery(raw) == {
+        "charged": 59, "drained": 41, "highest": 81, "lowest": 22}
+    assert _normalize_body_battery([]) is None
+
+
+def test_normalize_stress():
+    raw = {"calendarDate": "2026-10-17", "avgStressLevel": 28, "maxStressLevel": 95}
+    assert _normalize_stress(raw) == {"avg": 28, "max": 95}
+    assert _normalize_stress({"avgStressLevel": None}) is None
+
+
+def test_fetch_and_normalize_day_includes_readiness_status_battery_stress():
+    api = MagicMock()
+    api.get_training_readiness.return_value = READINESS_RAW
+    api.get_training_status.return_value = STATUS_RAW
+    api.get_body_battery.return_value = BODY_BATTERY_RAW
+    api.get_stress_data.return_value = STRESS_RAW
+
+    day = fetch_and_normalize_day(api, "2026-10-17")
+
+    assert day["trainingReadiness"] == {
+        "score": 64, "level": "MODERATE", "sleepScore": 71,
+        "sleepFactorPercent": 56, "recoveryTime": 1, "recoveryTimeHours": 0.0,
+        "recoveryFactorPercent": 99, "acwrFactorPercent": 94, "acuteLoad": 395,
+    }
+    assert day["trainingStatus"]["statusCode"] == 4
+    assert day["trainingStatus"]["loadBalance"]["anaerobic"] == 242.9
+    assert day["bodyBattery"] == {"charged": 59, "drained": 41, "highest": 81, "lowest": 22}
+    assert day["stress"] == {"avg": 28, "max": 95}

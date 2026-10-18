@@ -175,6 +175,119 @@ def _activity_payload(activity: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _pick_primary_entry(raw: Any) -> dict[str, Any]:
+    """Pick the primary-training-device entry, else the first usable entry."""
+    if not isinstance(raw, list):
+        return {}
+    entries = [entry for entry in raw if isinstance(entry, dict)]
+    for entry in entries:
+        if entry.get("primaryTrainingDevice") is True:
+            return entry
+    return entries[0] if entries else {}
+
+
+def _normalize_training_readiness(raw: Any) -> dict[str, Any] | None:
+    entry = _pick_primary_entry(raw)
+    if not entry:
+        return None
+    recovery_time = entry.get("recoveryTime")
+    return {
+        "score": entry.get("score"),
+        "level": entry.get("level"),
+        "sleepScore": entry.get("sleepScore"),
+        "sleepFactorPercent": entry.get("sleepScoreFactorPercent"),
+        "recoveryTime": recovery_time,
+        "recoveryTimeHours": (
+            round(recovery_time / 60, 1)
+            if isinstance(recovery_time, (int, float))
+            else None
+        ),
+        "recoveryFactorPercent": entry.get("recoveryTimeFactorPercent"),
+        "acwrFactorPercent": entry.get("acwrFactorPercent"),
+        "acuteLoad": entry.get("acuteLoad"),
+    }
+
+
+def _normalize_training_status(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict) or not raw:
+        return None
+
+    vo2_generic = _dict(_dict(raw.get("mostRecentVO2Max")).get("generic"))
+
+    status_entries = _dict(
+        _dict(raw.get("mostRecentTrainingStatus")).get("latestTrainingStatusData")
+    )
+    status_entry = _pick_primary_entry(list(status_entries.values()))
+    acute_load_dto = _dict(status_entry.get("acuteTrainingLoadDTO"))
+
+    balance_entries = _dict(
+        _dict(raw.get("mostRecentTrainingLoadBalance")).get(
+            "metricsTrainingLoadBalanceDTOMap"
+        )
+    )
+    balance_entry = _pick_primary_entry(list(balance_entries.values()))
+    load_balance = None
+    if balance_entry:
+        load_balance = {
+            "aerobicLow": round(balance_entry.get("monthlyLoadAerobicLow"), 1)
+            if isinstance(balance_entry.get("monthlyLoadAerobicLow"), (int, float))
+            else None,
+            "aerobicHigh": round(balance_entry.get("monthlyLoadAerobicHigh"), 1)
+            if isinstance(balance_entry.get("monthlyLoadAerobicHigh"), (int, float))
+            else None,
+            "anaerobic": round(balance_entry.get("monthlyLoadAnaerobic"), 1)
+            if isinstance(balance_entry.get("monthlyLoadAnaerobic"), (int, float))
+            else None,
+            "aerobicLowTarget": [
+                balance_entry.get("monthlyLoadAerobicLowTargetMin"),
+                balance_entry.get("monthlyLoadAerobicLowTargetMax"),
+            ],
+            "aerobicHighTarget": [
+                balance_entry.get("monthlyLoadAerobicHighTargetMin"),
+                balance_entry.get("monthlyLoadAerobicHighTargetMax"),
+            ],
+            "anaerobicTarget": [
+                balance_entry.get("monthlyLoadAnaerobicTargetMin"),
+                balance_entry.get("monthlyLoadAnaerobicTargetMax"),
+            ],
+            "feedbackPhrase": balance_entry.get("trainingBalanceFeedbackPhrase"),
+        }
+
+    return {
+        "vo2Max": vo2_generic.get("vo2MaxValue"),
+        "vo2MaxPrecise": vo2_generic.get("vo2MaxPreciseValue"),
+        "vo2MaxDate": vo2_generic.get("calendarDate"),
+        "statusCode": status_entry.get("trainingStatus"),
+        "statusPhrase": status_entry.get("trainingStatusFeedbackPhrase"),
+        "statusDate": status_entry.get("calendarDate"),
+        "acuteLoad": acute_load_dto.get("dailyTrainingLoadAcute"),
+        "chronicLoad": acute_load_dto.get("dailyTrainingLoadChronic"),
+        "acwr": acute_load_dto.get("dailyAcuteChronicWorkloadRatio"),
+        "acwrPercent": acute_load_dto.get("acwrPercent"),
+        "acwrStatus": acute_load_dto.get("acwrStatus"),
+        "loadBalance": load_balance,
+    }
+
+
+def _normalize_body_battery(raw: Any) -> dict[str, Any] | None:
+    entry = raw[0] if isinstance(raw, list) and raw else None
+    if not isinstance(entry, dict):
+        return None
+    return {
+        "charged": entry.get("charged"),
+        "drained": entry.get("drained"),
+        "highest": entry.get("bodyBatteryHighestValue"),
+        "lowest": entry.get("bodyBatteryLowestValue"),
+    }
+
+
+def _normalize_stress(raw: Any) -> dict[str, Any] | None:
+    avg = _dict(raw).get("avgStressLevel")
+    if avg is None:
+        return None
+    return {"avg": avg, "max": _dict(raw).get("maxStressLevel")}
+
+
 def fetch_and_normalize_day(api: Garmin, date_str: str) -> dict[str, Any]:
     """Fetch and normalize one Garmin day into a DailyHealth payload."""
     summary = _dict(call_with_retry(api.get_user_summary, date_str))
@@ -186,6 +299,10 @@ def fetch_and_normalize_day(api: Garmin, date_str: str) -> dict[str, Any]:
         date_str,
         date_str,
     )
+    readiness = _optional_call(api.get_training_readiness, date_str)
+    status_raw = _optional_call(api.get_training_status, date_str)
+    battery_raw = _optional_call(api.get_body_battery, date_str)
+    stress_raw = _optional_call(api.get_stress_data, date_str)
 
     sleep_dto = _dict(sleep.get("dailySleepDTO"))
     sleep_scores = _dict(sleep_dto.get("sleepScores"))
@@ -227,4 +344,8 @@ def fetch_and_normalize_day(api: Garmin, date_str: str) -> dict[str, Any]:
             _activity_payload(activity)
             for activity in _normalize_activities(activities_raw)
         ],
+        "trainingReadiness": _normalize_training_readiness(readiness),
+        "trainingStatus": _normalize_training_status(status_raw),
+        "bodyBattery": _normalize_body_battery(battery_raw),
+        "stress": _normalize_stress(stress_raw),
     }
