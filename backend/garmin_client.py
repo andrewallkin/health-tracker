@@ -288,6 +288,69 @@ def _normalize_stress(raw: Any) -> dict[str, Any] | None:
     return {"avg": avg, "max": _dict(raw).get("maxStressLevel")}
 
 
+def _normalize_endurance_score(raw: Any) -> dict[str, Any] | None:
+    entry = _dict(raw)
+    overall = entry.get("overallScore")
+    if overall is None:
+        return None
+    return {"overall": overall, "classification": entry.get("classification")}
+
+
+def _normalize_intensity_minutes(raw: Any) -> dict[str, Any] | None:
+    entry = _dict(raw)
+    moderate = entry.get("moderateMinutes")
+    vigorous = entry.get("vigorousMinutes")
+    if moderate is None or vigorous is None:
+        return None
+    return {
+        "moderate": moderate,
+        "vigorous": vigorous,
+        "weeklyModerate": entry.get("weeklyModerate"),
+        "weeklyVigorous": entry.get("weeklyVigorous"),
+        "weeklyTotal": entry.get("weeklyTotal"),
+        "weekGoal": entry.get("weekGoal"),
+    }
+
+
+def _normalize_hill_score(raw: Any) -> dict[str, Any] | None:
+    entry = _dict(raw)
+    overall = entry.get("overallScore")
+    if overall is None:
+        return None
+    return {
+        "strength": entry.get("strengthScore"),
+        "endurance": entry.get("enduranceScore"),
+        "overall": overall,
+    }
+
+
+def _normalize_fitness_age(raw: Any) -> dict[str, Any] | None:
+    entry = _dict(raw)
+    fitness_age = entry.get("fitnessAge")
+    if fitness_age is None:
+        return None
+    return {
+        "fitnessAge": fitness_age,
+        "chronologicalAge": entry.get("chronologicalAge"),
+    }
+
+
+def _normalize_respiration(raw: Any) -> dict[str, Any] | None:
+    avg = _dict(raw).get("avgSleepRespirationValue")
+    if avg is None:
+        return None
+    return {"avgSleep": avg}
+
+
+def _normalize_spo2(raw: Any) -> dict[str, Any] | None:
+    entry = _dict(raw)
+    avg_sleep = entry.get("avgSleepSpO2")
+    avg_7d = entry.get("lastSevenDaysAvgSpO2")
+    if avg_sleep is None and avg_7d is None:
+        return None
+    return {"avgSleep": avg_sleep, "avg7d": avg_7d}
+
+
 def fetch_and_normalize_day(api: Garmin, date_str: str) -> dict[str, Any]:
     """Fetch and normalize one Garmin day into a DailyHealth payload."""
     summary = _dict(call_with_retry(api.get_user_summary, date_str))
@@ -303,6 +366,12 @@ def fetch_and_normalize_day(api: Garmin, date_str: str) -> dict[str, Any]:
     status_raw = _optional_call(api.get_training_status, date_str)
     battery_raw = _optional_call(api.get_body_battery, date_str)
     stress_raw = _optional_call(api.get_stress_data, date_str)
+    endurance_raw = _optional_call(api.get_endurance_score, date_str)
+    intensity_raw = _optional_call(api.get_intensity_minutes_data, date_str)
+    hill_raw = _optional_call(api.get_hill_score, date_str)
+    fitness_age_raw = _optional_call(api.get_fitnessage_data, date_str)
+    respiration_raw = _optional_call(api.get_respiration_data, date_str)
+    spo2_raw = _optional_call(api.get_spo2_data, date_str)
 
     sleep_dto = _dict(sleep.get("dailySleepDTO"))
     sleep_scores = _dict(sleep_dto.get("sleepScores"))
@@ -348,4 +417,10 @@ def fetch_and_normalize_day(api: Garmin, date_str: str) -> dict[str, Any]:
         "trainingStatus": _normalize_training_status(status_raw),
         "bodyBattery": _normalize_body_battery(battery_raw),
         "stress": _normalize_stress(stress_raw),
+        "enduranceScore": _normalize_endurance_score(endurance_raw),
+        "intensityMinutes": _normalize_intensity_minutes(intensity_raw),
+        "hillScore": _normalize_hill_score(hill_raw),
+        "fitnessAge": _normalize_fitness_age(fitness_age_raw),
+        "respiration": _normalize_respiration(respiration_raw),
+        "spo2": _normalize_spo2(spo2_raw),
     }

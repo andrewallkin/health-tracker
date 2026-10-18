@@ -14,6 +14,12 @@ from backend.garmin_client import (
     GarminTransientError,
     _garmin_kwargs,
     _normalize_body_battery,
+    _normalize_endurance_score,
+    _normalize_fitness_age,
+    _normalize_hill_score,
+    _normalize_intensity_minutes,
+    _normalize_respiration,
+    _normalize_spo2,
     _normalize_stress,
     _normalize_training_readiness,
     _normalize_training_status,
@@ -181,6 +187,12 @@ def test_fetch_and_normalize_day_maps_summary_sleep_hr_hrv_activities():
     assert day["trainingStatus"] is None
     assert day["bodyBattery"] is None
     assert day["stress"] is None
+    assert day["enduranceScore"] is None
+    assert day["intensityMinutes"] is None
+    assert day["hillScore"] is None
+    assert day["fitnessAge"] is None
+    assert day["respiration"] is None
+    assert day["spo2"] is None
     DailyHealth.model_validate(day)
 
 
@@ -202,6 +214,12 @@ def test_fetch_and_normalize_day_uses_defaults_when_optional_calls_fail(monkeypa
     assert day["trainingStatus"] is None
     assert day["bodyBattery"] is None
     assert day["stress"] is None
+    assert day["enduranceScore"] is None
+    assert day["intensityMinutes"] is None
+    assert day["hillScore"] is None
+    assert day["fitnessAge"] is None
+    assert day["respiration"] is None
+    assert day["spo2"] is None
     DailyHealth.model_validate(day)
 
 
@@ -317,6 +335,89 @@ def test_normalize_stress():
     raw = {"calendarDate": "2026-10-17", "avgStressLevel": 28, "maxStressLevel": 95}
     assert _normalize_stress(raw) == {"avg": 28, "max": 95}
     assert _normalize_stress({"avgStressLevel": None}) is None
+
+
+def test_normalize_endurance_score():
+    raw = {"calendarDate": "2026-10-17", "overallScore": 6064, "classification": 3}
+    assert _normalize_endurance_score(raw) == {"overall": 6064, "classification": 3}
+    assert _normalize_endurance_score({}) is None
+
+
+def test_normalize_endurance_score_historical_without_classification():
+    assert _normalize_endurance_score({"overallScore": 6653}) == {
+        "overall": 6653, "classification": None}
+
+
+def test_normalize_intensity_minutes():
+    raw = {"calendarDate": "2026-10-17", "moderateMinutes": 0, "vigorousMinutes": 0,
+           "weeklyModerate": 158, "weeklyVigorous": 220, "weeklyTotal": 598, "weekGoal": 300}
+    assert _normalize_intensity_minutes(raw) == {
+        "moderate": 0, "vigorous": 0, "weeklyModerate": 158,
+        "weeklyVigorous": 220, "weeklyTotal": 598, "weekGoal": 300}
+    assert _normalize_intensity_minutes({}) is None
+
+
+def test_normalize_hill_score():
+    raw = {"calendarDate": "2026-10-17", "strengthScore": 41,
+           "enduranceScore": 32, "overallScore": 46}
+    assert _normalize_hill_score(raw) == {"strength": 41, "endurance": 32, "overall": 46}
+    assert _normalize_hill_score({}) is None
+
+
+def test_normalize_fitness_age():
+    raw = {"chronologicalAge": 26, "fitnessAge": 18.0}
+    assert _normalize_fitness_age(raw) == {"fitnessAge": 18.0, "chronologicalAge": 26}
+    assert _normalize_fitness_age({"fitnessAge": None}) is None
+
+
+def test_normalize_respiration():
+    raw = {"avgSleepRespirationValue": 13.4}
+    assert _normalize_respiration(raw) == {"avgSleep": 13.4}
+    assert _normalize_respiration({"avgSleepRespirationValue": None}) is None
+
+
+def test_normalize_spo2():
+    raw = {"avgSleepSpO2": 96.0, "lastSevenDaysAvgSpO2": 95.0}
+    assert _normalize_spo2(raw) == {"avgSleep": 96.0, "avg7d": 95.0}
+    assert _normalize_spo2({}) is None
+
+
+def test_normalize_spo2_historical_without_avg_sleep():
+    assert _normalize_spo2({"lastSevenDaysAvgSpO2": 95.7}) == {
+        "avgSleep": None, "avg7d": 95.7}
+
+
+ENDURANCE_RAW = {"calendarDate": "2026-10-17", "overallScore": 6064, "classification": 3}
+INTENSITY_RAW = {"calendarDate": "2026-10-17", "moderateMinutes": 0, "vigorousMinutes": 0,
+                 "weeklyModerate": 158, "weeklyVigorous": 220, "weeklyTotal": 598,
+                 "weekGoal": 300}
+HILL_RAW = {"calendarDate": "2026-10-17", "strengthScore": 41,
+            "enduranceScore": 32, "overallScore": 46}
+FITNESS_AGE_RAW = {"chronologicalAge": 26, "fitnessAge": 18.0}
+RESPIRATION_RAW = {"avgSleepRespirationValue": 13.4}
+SPO2_RAW = {"avgSleepSpO2": 96.0, "lastSevenDaysAvgSpO2": 95.0}
+
+
+def test_fetch_and_normalize_day_includes_second_tier_blocks():
+    api = MagicMock()
+    api.get_endurance_score.return_value = ENDURANCE_RAW
+    api.get_intensity_minutes_data.return_value = INTENSITY_RAW
+    api.get_hill_score.return_value = HILL_RAW
+    api.get_fitnessage_data.return_value = FITNESS_AGE_RAW
+    api.get_respiration_data.return_value = RESPIRATION_RAW
+    api.get_spo2_data.return_value = SPO2_RAW
+
+    day = fetch_and_normalize_day(api, "2026-10-17")
+
+    assert day["enduranceScore"] == {"overall": 6064, "classification": 3}
+    assert day["intensityMinutes"] == {
+        "moderate": 0, "vigorous": 0, "weeklyModerate": 158,
+        "weeklyVigorous": 220, "weeklyTotal": 598, "weekGoal": 300}
+    assert day["hillScore"] == {"strength": 41, "endurance": 32, "overall": 46}
+    assert day["fitnessAge"] == {"fitnessAge": 18.0, "chronologicalAge": 26}
+    assert day["respiration"] == {"avgSleep": 13.4}
+    assert day["spo2"] == {"avgSleep": 96.0, "avg7d": 95.0}
+    DailyHealth.model_validate(day)
 
 
 def test_fetch_and_normalize_day_includes_readiness_status_battery_stress():
