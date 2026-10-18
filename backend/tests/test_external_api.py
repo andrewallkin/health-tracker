@@ -582,7 +582,17 @@ def test_today_returns_cached_burn_and_activities(client, auth_headers) -> None:
     api_key = issue_key(client, auth_headers)
     user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
     connect_garmin(client, auth_headers)
-    payload = health_payload("2026-09-21")
+    payload = health_payload("2026-09-21", steps=12000)
+    payload["stepGoal"] = 10000
+    payload["restingHr"] = 44
+    payload["avgRestingHr7d"] = 45
+    payload["sleepHours"] = 7.4
+    payload["deepSleepHours"] = 1.2
+    payload["remSleepHours"] = 1.8
+    payload["lightSleepHours"] = 4.1
+    payload["sleepAvgHr"] = 48
+    payload["sleepScore"] = 71
+    payload["hrvWeeklyAvg"] = 58
     payload["activities"] = [
         {
             "id": "act-1",
@@ -591,7 +601,7 @@ def test_today_returns_cached_burn_and_activities(client, auth_headers) -> None:
             "startTime": "07:00",
             "durationMin": 30,
             "calories": 280,
-            "avgHr": 150,
+            "avgHr": 148,
             "distanceKm": 5.0,
         }
     ]
@@ -623,6 +633,13 @@ def test_today_returns_cached_burn_and_activities(client, auth_headers) -> None:
     assert health["activeCalories"] == 400
     assert health["bmrCalories"] == 1700
     assert "reason" not in health
+    assert health["restingHr"] == 44
+    assert health["restingHr7dAvg"] == 45
+    assert health["hrv"] == {"value": 61, "status": "balanced", "weeklyAvg": 58}
+    assert health["sleep"] == {"totalHours": 7.4, "deepHours": 1.2, "remHours": 1.8,
+                               "lightHours": 4.1, "avgHr": 48, "score": 71}
+    assert health["steps"] == 12000 and health["stepGoal"] == 10000
+    assert health["activities"][0]["avgHr"] == 148
     assert health["activities"] == [
         {
             "id": "act-1",
@@ -631,6 +648,7 @@ def test_today_returns_cached_burn_and_activities(client, auth_headers) -> None:
             "startTime": "07:00",
             "durationMin": 30,
             "calories": 280,
+            "avgHr": 148,
             "distanceKm": 5.0,
         }
     ]

@@ -545,6 +545,7 @@ def _activity_out(activity) -> dict:
         "startTime": activity.startTime,
         "durationMin": activity.durationMin,
         "calories": activity.calories,
+        "avgHr": activity.avgHr,
         "distanceKm": activity.distanceKm,
     }
 
@@ -595,6 +596,21 @@ def _health_block(day: DailyHealth | None, reason: str | None) -> dict:
         "totalCalories": day.totalCalories,
         "activeCalories": day.activeCalories,
         "bmrCalories": day.bmrCalories,
+        "steps": day.steps,
+        "stepGoal": day.stepGoal,
+        "restingHr": day.restingHr,
+        "minHr": day.minHr,
+        "maxHr": day.maxHr,
+        "restingHr7dAvg": day.avgRestingHr7d,
+        "hrv": {"value": day.hrv, "status": day.hrvStatus, "weeklyAvg": day.hrvWeeklyAvg},
+        "sleep": {
+            "totalHours": day.sleepHours,
+            "deepHours": day.deepSleepHours,
+            "remHours": day.remSleepHours,
+            "lightHours": day.lightSleepHours,
+            "avgHr": day.sleepAvgHr,
+            "score": day.sleepScore,
+        },
         "activities": [_activity_out(activity) for activity in day.activities],
     }
 
