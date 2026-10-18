@@ -658,6 +658,34 @@ def build_today(db: Session, user_id: str, date_key: str) -> dict:
     }
 
 
+def get_day_status_external(db: Session, user_id: str, date_key: str) -> dict:
+    return {
+        "date": date_key,
+        "notTracked": get_day_status_for_date(db, user_id, date_key) is not None,
+    }
+
+
+def set_day_status_external(db: Session, user_id: str, date_key: str, not_tracked: bool) -> dict:
+    parsed = parse_date_key(date_key)
+    if parsed.isoformat() > today_key():
+        raise HTTPException(status_code=400, detail="Cannot mark future dates as not tracked")
+    row = get_day_status_for_date(db, user_id, date_key)
+    if not_tracked:
+        if row is None:
+            row = DayStatusRow(
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                status_date=date_key,
+            )
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+    elif row is not None:
+        db.delete(row)
+        db.commit()
+    return {"date": date_key, "notTracked": not_tracked}
+
+
 def _counted_days(
     dates: list[str],
     entries_by_date: dict[str, list[LogEntryRow]],

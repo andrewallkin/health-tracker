@@ -20,18 +20,21 @@ from ..external_service import (
     delete_entry,
     delete_food,
     delete_meal,
+    get_day_status_external,
     list_foods,
     list_health_snapshots,
     list_meals,
     log_food,
     log_meal,
     quick_log,
+    set_day_status_external,
     update_food,
     update_meal,
     upsert_weight,
 )
-from ..external_time import current_hhmm, johannesburg_now, resolve_optional_date
+from ..external_time import current_hhmm, johannesburg_now, resolve_optional_date, today_key
 from ..schemas_external import (
+    ExternalDayStatusWrite,
     ExternalFoodCreate,
     ExternalFoodUpdate,
     ExternalLogFood,
@@ -287,6 +290,25 @@ def put_weight(
     user: UserRow = Depends(get_user_from_external_api_key),
 ) -> dict:
     return upsert_weight(db, user.id, resolve_optional_date(payload.date), payload.weightKg)
+
+
+@router.get("/day-status")
+def get_day_status(
+    date: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    return get_day_status_external(db, user.id, resolve_optional_date(date))
+
+
+@router.put("/day-status")
+def put_day_status(
+    payload: ExternalDayStatusWrite,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    date_key = payload.date if payload.date is not None else today_key()
+    return set_day_status_external(db, user.id, date_key, payload.notTracked)
 
 
 @router.get("/health-snapshots")

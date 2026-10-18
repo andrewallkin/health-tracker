@@ -14,6 +14,7 @@ from backend.database import get_db
 from backend.db_models import (
     CheckInPhotoRow,
     CheckInRow,
+    DayStatusRow,
     GarminDailyHealthRow,
     GarminMetricSnapshotRow,
 )
@@ -814,6 +815,109 @@ def test_weight_put_keeps_notes_and_photos_and_reports_averages(client, auth_hea
     assert too_light.status_code == 400
     future = client.get("/api/external/weight", headers=headers, params={"date": "2099-01-01"})
     assert future.status_code == 400
+
+
+def test_day_status_get_defaults_to_today_and_requires_auth(client, auth_headers) -> None:
+    assert client.get("/api/external/day-status").status_code == 401
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    response = client.get("/api/external/day-status", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"date": today_key(), "notTracked": False}
+
+
+def test_day_status_put_true_creates_row_for_today(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+
+    response = client.put("/api/external/day-status", headers=headers, json={"notTracked": True})
+    assert response.status_code == 200, response.text
+    assert response.json() == {"date": today_key(), "notTracked": True}
+
+    db, gen = db_session(client)
+    try:
+        rows = db.query(DayStatusRow).filter_by(user_id=user_id, status_date=today_key()).all()
+    finally:
+        db.close()
+        close_db(gen)
+    assert len(rows) == 1
+
+    today = client.get("/api/external/day-status", headers=headers)
+    assert today.status_code == 200, today.text
+    assert today.json() == {"date": today_key(), "notTracked": True}
+
+
+def test_day_status_put_false_removes_row_and_is_idempotent(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+
+    marked = client.put("/api/external/day-status", headers=headers, json={"notTracked": True})
+    assert marked.status_code == 200, marked.text
+
+    cleared = client.put("/api/external/day-status", headers=headers, json={"notTracked": False})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json() == {"date": today_key(), "notTracked": False}
+
+    db, gen = db_session(client)
+    try:
+        count = db.query(DayStatusRow).filter_by(user_id=user_id, status_date=today_key()).count()
+    finally:
+        db.close()
+        close_db(gen)
+    assert count == 0
+
+    again = client.put("/api/external/day-status", headers=headers, json={"notTracked": False})
+    assert again.status_code == 200, again.text
+    assert again.json() == {"date": today_key(), "notTracked": False}
+
+
+def test_day_status_put_explicit_past_date_creates_row(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+
+    response = client.put(
+        "/api/external/day-status",
+        headers=headers,
+        json={"date": "2026-09-01", "notTracked": True},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"date": "2026-09-01", "notTracked": True}
+
+    db, gen = db_session(client)
+    try:
+        rows = db.query(DayStatusRow).filter_by(user_id=user_id, status_date="2026-09-01").all()
+    finally:
+        db.close()
+        close_db(gen)
+    assert len(rows) == 1
+
+
+def test_day_status_rejects_future_and_malformed_dates(client, auth_headers) -> None:
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    future = client.put(
+        "/api/external/day-status",
+        headers=headers,
+        json={"date": "2099-01-01", "notTracked": True},
+    )
+    assert future.status_code == 400
+    assert future.json()["detail"] == "Cannot mark future dates as not tracked"
+
+    malformed = client.get("/api/external/day-status", headers=headers, params={"date": "2026-13"})
+    assert malformed.status_code == 400
+    assert malformed.json()["detail"] == "Invalid date"
+
+    calendar_invalid = client.put(
+        "/api/external/day-status",
+        headers=headers,
+        json={"date": "2026-02-30", "notTracked": True},
+    )
+    assert calendar_invalid.status_code == 400
+    assert calendar_invalid.json()["detail"] == "Invalid date"
 
 
 def _save_food(client, headers, name: str, calories: int, protein: float = 10, carbs: float = 0, fat: float = 1) -> dict:

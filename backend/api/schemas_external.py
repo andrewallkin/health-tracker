@@ -5,6 +5,11 @@ from pydantic import BaseModel, Field, model_validator
 from .schemas import MealSlot
 
 
+class ExternalDayStatusWrite(BaseModel):
+    notTracked: bool
+    date: str | None = None
+
+
 class ExternalFoodCreate(BaseModel):
     name: str = Field(min_length=1)
     description: str | None = None

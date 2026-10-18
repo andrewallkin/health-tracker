@@ -72,4 +72,10 @@ Weigh-in, 7-day average, a 7-day series, a 30-day series, and the change in the 
 PUT /api/external/weight
 Body: weightKg from 30 to 300, optional date. One weigh-in per day. Updating weight does not remove check-in notes or photos.
 
+GET /api/external/day-status?date=
+Whether the day is marked not tracked (skipped). Omit date to use today. Returns date and notTracked.
+
+PUT /api/external/day-status
+Body: notTracked (bool), optional date. Omit date to use today. notTracked true marks the day as skipped; false removes the mark and is safe when there is none. Future dates are rejected.
+
 AI estimate is not available. Grok estimates the food, then uses quick-log, saves a food with POST /api/external/foods, or saves a meal with POST /api/external/meals. Log a saved food or meal with log-food or log-meal.

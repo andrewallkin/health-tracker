@@ -37,6 +37,8 @@ Public routes: `GET /api/external/info` (short bot instructions) and `GET /api/e
 | GET | `/api/external/health-snapshots?limit=` | Weekly Garmin snapshots: race predictions and lactate threshold. Read-only. |
 | GET | `/api/external/weight?date=` | Weigh-in, 7-day average, 7- and 30-day series, deltas. |
 | PUT | `/api/external/weight` | Set the weigh-in for a day. |
+| GET | `/api/external/day-status?date=` | Whether a day is marked not tracked. |
+| PUT | `/api/external/day-status` | Mark or unmark a day as not tracked. |
 
 Food and meal responses include `description`. It is `null` when none was saved. Meal responses also include `kind`: `manual` or `composed`. A meal's foods list each food's id, name, and portion. They do not repeat that food's description.
 
@@ -57,6 +59,8 @@ Meal-create body is one of two shapes. A manual meal sends `name`, optional `des
 Log-meal body: `mealId`, `servings` (for example `0.5` or `1.5`), `slot`, optional `date`. The meal must come from the meals list. The server multiplies that meal's macros by servings. Do not send macros.
 
 Weight body: `weightKg` from 30 to 300, optional `date`. A second write on the same day replaces the weight and leaves notes and photos in place.
+
+Day-status body: `notTracked` (bool), optional `date` — omitting the date uses today in SAST. Both endpoints return `{date, notTracked}`. `notTracked: true` marks the day as skipped; `notTracked: false` removes the mark and is safe when there is none. Future dates are rejected with 400.
 
 Burned calories are Garmin `totalCalories`. If Garmin is disconnected, nutrition data is still returned and health status is `unavailable`.
 
