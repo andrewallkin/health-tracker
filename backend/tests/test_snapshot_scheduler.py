@@ -27,7 +27,6 @@ def test_needs_capture_monday_anchored():
     fresh = monday_after + timedelta(minutes=10)
     assert needs_capture(fresh, monday_after) is False
     # Saturday: due time is still the previous Monday 07:00
-    prev_monday = datetime(2026, 10, 12, 7, 0, tzinfo=TZ)
     assert needs_capture(datetime(2026, 10, 13, 0, 0, tzinfo=TZ), saturday) is False
     assert needs_capture(datetime(2026, 10, 11, 0, 0, tzinfo=TZ), saturday) is True
     # Monday 06:00 is before this week's anchor — a Friday snapshot is still fresh

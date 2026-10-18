@@ -59,6 +59,7 @@ def _load_tokens() -> str:
         tokens_json = login_and_dump_tokens(email, password)
         TOKENS_PATH.parent.mkdir(parents=True, exist_ok=True)
         TOKENS_PATH.write_text(tokens_json, encoding="utf-8")
+        os.chmod(TOKENS_PATH, 0o600)
         return tokens_json
     if TOKENS_PATH.is_file():
         return TOKENS_PATH.read_text(encoding="utf-8")
@@ -108,6 +109,9 @@ def main() -> None:
     parser.add_argument("--to", dest="to_key", help="override end date YYYY-MM-DD")
     parser.add_argument("--throttle", type=float, default=1.5, help="seconds between day fetches")
     args = parser.parse_args()
+
+    if bool(args.from_key) != bool(args.to_key):
+        raise SystemExit("--from and --to must be given together (or omit both)")
 
     today = today_in_timezone(TZ_NAME)
     if args.from_key and args.to_key:

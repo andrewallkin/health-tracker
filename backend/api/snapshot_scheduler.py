@@ -81,7 +81,6 @@ def _run_loop() -> None:
                         db.rollback()
             finally:
                 db.close()
-            consecutive_failures = 0
         except Exception:  # noqa: BLE001 — scheduler must never crash the process
             cycle_failed = True
         if cycle_failed:
