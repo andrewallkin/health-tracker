@@ -74,15 +74,15 @@ Garmin connects in Settings. Health data is per calendar day in `Africa/Johannes
 
 The `health` block appears under `health` in `/today` and as each day row in `/health`. Shape:
 
-- `status` is `ready`, or `unavailable` with a `reason` (`missing`, `disconnected`, `future`, or `error`); those rows carry only `date`, `status`, and `reason`.
+- `status` is `ready`, or `unavailable` with a `reason` (`missing`, `disconnected`, `future`, or `error`). Unavailable `/health` day rows carry only `date`, `status`, and `reason`; under `/today` the unavailable block is `{status, reason}` with no `date`.
 - `totalCalories`, `activeCalories`, `bmrCalories` in kcal.
 - `steps`, `stepGoal` in steps.
 - `restingHr`, `minHr`, `maxHr`, `restingHr7dAvg` in bpm.
 - `hrv`: `value` and `weeklyAvg` in ms; `status` is `balanced`, `unbalanced`, `low`, `poor`, or `unavailable`.
 - `sleep`: `totalHours`, `deepHours`, `remHours`, `lightHours` (hours, one decimal), `avgHr` (bpm), `score` (0-100).
 - `activities`: `id`, `name`, `type`, `startTime` (`HH:MM`), `durationMin` (minutes), `calories`, `avgHr` (bpm), `distanceKm` (km).
-- `trainingReadiness`: `score`, `level`, `sleepScore`, `sleepFactorPercent`, `recoveryTime` (Garmin raw value, minutes), `recoveryTimeHours` (hours, one decimal, minutes divided by 60), `recoveryFactorPercent`, `acwrFactorPercent`, `acuteLoad` (training-load units).
-- `trainingStatus`: `vo2Max` and `vo2MaxPrecise` (ml/kg/min), `vo2MaxDate`, `statusCode`, `statusPhrase`, `statusDate`, `acuteLoad` and `chronicLoad` (training-load units), `acwr` (ratio), `acwrPercent`, `acwrStatus`, and `loadBalance` (`aerobicLow`, `aerobicHigh`, `anaerobic` in training-load units; `aerobicLowTarget`, `aerobicHighTarget`, `anaerobicTarget` as `[min, max]` targets; `feedbackPhrase`).
+- `trainingReadiness`: `score`, `level`, `sleepScore`, `sleepFactorPercent`, `recoveryTime` (Garmin raw value, minutes), `recoveryTimeHours` (hours, one decimal, minutes divided by 60), `recoveryFactorPercent`, `acwrFactorPercent`, `acuteLoad` (training-load units, float).
+- `trainingStatus`: `vo2Max` and `vo2MaxPrecise` (ml/kg/min), `vo2MaxDate`, `statusCode`, `statusPhrase`, `statusDate`, `acuteLoad` and `chronicLoad` (training-load units, float), `acwr` (ratio), `acwrPercent`, `acwrStatus`, and `loadBalance` (`aerobicLow`, `aerobicHigh`, `anaerobic` in training-load units (float); `aerobicLowTarget`, `aerobicHighTarget`, `anaerobicTarget` as `[min, max]` targets; `feedbackPhrase`).
 - `bodyBattery`: `charged`, `drained`, `highest`, `lowest` (0-100 index).
 - `stress`: `avg`, `max` (0-100 index).
 - `enduranceScore`: `overall`, `classification`.
@@ -100,7 +100,7 @@ Two required dates, `YYYY-MM-DD`. Returns `from`, `to`, `status`, and `days`, on
 
 ### GET /api/external/health-snapshots
 
-Read-only. Snapshots are captured server-side every Monday around 07:00 SAST, with a catch-up at startup when no snapshot exists since that anchor. Optional `?limit=` from 1 to 52, default 52, newest first. Each item is `id`, `snapshotDate` (`YYYY-MM-DD`), `fetchedAt` (ISO timestamp), `racePredictions`, and `lactateThreshold`. `racePredictions` is `time5K`, `time10K`, `timeHalfMarathon`, `timeMarathon` — race times in seconds. `lactateThreshold` is `speedMps` in m/s (Garmin's raw value x 10, cross-checked against race predictions), `paceSecPerKm` in seconds derived from the speed, `heartRate` in bpm, and `asOf`, Garmin's version timestamp string. Either half is `null` when Garmin did not report it.
+Read-only. Snapshots are captured server-side every Monday around 07:00 SAST, with a catch-up at startup when no snapshot exists since that anchor. Optional `?limit=` from 1 to 52, default 52, newest first. Each item is `id`, `snapshotDate` (`YYYY-MM-DD`), `fetchedAt` (ISO timestamp), `racePredictions`, and `lactateThreshold`. `racePredictions` is `time5K`, `time10K`, `timeHalfMarathon`, `timeMarathon` — race times in seconds. `lactateThreshold` is `speedMps` in m/s (Garmin's raw value x 10, cross-checked against race predictions), `paceSecPerKm` in seconds derived from the speed, `heartRate` in bpm, and `asOf`, a passthrough timestamp string of Garmin's underlying reading (Garmin's raw `calendarDate`; observed `2026-08-24T17:37:34.267`, format not guaranteed) — treat it as an opaque string, not a `YYYY-MM-DD` date. Either half is `null` when Garmin did not report it.
 
 ### Backfill script
 

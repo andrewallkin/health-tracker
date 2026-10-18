@@ -109,7 +109,7 @@ Dev URLs: **http://localhost:3000** (Docker frontend) or **http://localhost:5173
 
 **Context providers** (`main.tsx`): `AuthProvider`, `ConfirmDialogProvider`
 
-**Hooks:** `useNutritionData`, `useCheckInData`, `useEstimateFlow`
+**Hooks:** `useNutritionData`, `useCheckInData`, `useEstimateFlow`, `useHealthData`
 
 **Shared lib helpers:** `dates.ts`, `aggregates.ts`, `logLabels.ts`, `logEntry.ts`, `mealPhoto.ts`, `checkIn.ts`, `errors.ts`
 
