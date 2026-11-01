@@ -163,7 +163,7 @@ def test_app_settings_to_schema_with_encrypted_key(db_session, monkeypatch: pyte
     from cryptography.fernet import Fernet
 
     key = Fernet.generate_key().decode()
-    monkeypatch.setenv("SETTINGS_ENCRYPTION_KEY", key)
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
     from backend.config import get_settings
 
     get_settings.cache_clear()

@@ -8,7 +8,7 @@ from backend.tests.conftest import register_user
 
 def test_encrypt_decrypt_round_trip(monkeypatch):
     key = Fernet.generate_key().decode()
-    monkeypatch.setenv("SETTINGS_ENCRYPTION_KEY", key)
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
 
     from backend.config import get_settings
 

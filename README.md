@@ -35,10 +35,12 @@ cp .env.example .env
 
 Fill in `.env`:
 
+The authoritative variable list lives in `.env.example`. Key ones:
+
 | Variable | Required | Notes |
 |----------|----------|-------|
 | `POSTGRES_*` | Yes | Database connection (see `.env.example`) |
-| `SETTINGS_ENCRYPTION_KEY` | Yes | Encrypts per-user OpenAI keys in the DB |
+| `ENCRYPTION_KEY` | Yes | Encrypts per-user OpenAI keys and Garmin tokens in the DB |
 | `JWT_SECRET_KEY` | Yes | Auth signing secret (use a strong value in production) |
 | `CORS_ORIGINS` | Dev | Comma-separated frontend origins |
 | `GCP_SERVICE_ACCOUNT_CREDENTIALS` | Prod | Base64 service account JSON for GCS photo storage |
@@ -49,6 +51,8 @@ Generate an encryption key:
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
+
+> Renaming note: `ENCRYPTION_KEY` was previously `SETTINGS_ENCRYPTION_KEY`. Keep the value stable — rotating it makes every stored key and token permanently undecryptable.
 
 ### 2. Run with Docker (recommended)
 

@@ -66,7 +66,7 @@ cd frontend && npm test && npm run lint && npx tsc -b
 uv run python scripts/seed_db.py --reset   # demo@example.com / password123
 ```
 
-Copy `.env.example` to `.env` before running. Required vars: `POSTGRES_*`, `SETTINGS_ENCRYPTION_KEY`, `JWT_SECRET_KEY`. See README for full list.
+Copy `.env.example` to `.env` before running. Required vars: `POSTGRES_*`, `ENCRYPTION_KEY`, `JWT_SECRET_KEY`. See README for full list.
 
 Dev URLs: **http://localhost:3000** (Docker frontend) or **http://localhost:5173** (Vite). Both proxy `/api` to the backend on port 8000.
 

@@ -18,7 +18,7 @@ if str(BACKEND_DIR) not in sys.path:
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-os.environ.setdefault("SETTINGS_ENCRYPTION_KEY", Fernet.generate_key().decode())
+os.environ.setdefault("ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 os.environ.setdefault("POSTGRES_USER", "test")
 os.environ.setdefault("POSTGRES_PASSWORD", "test")

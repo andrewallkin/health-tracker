@@ -16,7 +16,7 @@ def _fernet() -> Fernet:
     key = get_settings().encryption_key.strip()
     if not key:
         raise EncryptionError(
-            "SETTINGS_ENCRYPTION_KEY is not set. Generate one with: "
+            "ENCRYPTION_KEY is not set. Generate one with: "
             "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
         )
     try:
