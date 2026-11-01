@@ -24,6 +24,7 @@ dependencies = [
     "garminconnect>=0.3.2",
     "curl-cffi>=0.15.0",
     "pydantic-settings>=2.16.2",
+    "tzdata",
 ]
 
 [tool.uv]

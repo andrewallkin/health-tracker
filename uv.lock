@@ -923,6 +923,7 @@ dependencies = [
     { name = "python-jose", extra = ["cryptography"] },
     { name = "python-multipart" },
     { name = "sqlalchemy" },
+    { name = "tzdata" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -953,6 +954,7 @@ requires-dist = [
     { name = "python-jose", extras = ["cryptography"] },
     { name = "python-multipart" },
     { name = "sqlalchemy" },
+    { name = "tzdata" },
     { name = "uvicorn", extras = ["standard"] },
 ]
 
