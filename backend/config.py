@@ -1,74 +1,82 @@
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated, Any
 from urllib.parse import quote_plus
 
-from dotenv import load_dotenv
+from pydantic import AliasChoices, Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(REPO_ROOT / ".env")
 
 
-class Settings:
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=str(REPO_ROOT / ".env"), extra="ignore")
+
     postgres_user: str
     postgres_password: str
     postgres_host: str
-    postgres_port: str
+    postgres_port: int = 5432
     postgres_db: str
-    database_url: str
-    encryption_key: str
-    cors_origins: list[str]
-    meal_photos_dir: Path
-    gcp_service_account_credentials: str
-    gcs_images_bucket_name: str
-    gcs_meal_photos_folder: str
-    gcs_check_in_photos_folder: str
-    jwt_secret_key: str
-    jwt_access_token_expire_minutes: int
-    jwt_refresh_token_expire_days: int
-    cookie_secure: bool
-    garmin_fetch_concurrency: int
 
-    def __init__(self) -> None:
-        self.postgres_user = os.environ["POSTGRES_USER"]
-        self.postgres_password = os.environ["POSTGRES_PASSWORD"]
-        self.postgres_host = os.environ["POSTGRES_HOST"]
-        self.postgres_port = os.environ["POSTGRES_PORT"]
-        self.postgres_db = os.environ["POSTGRES_DB"]
+    encryption_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("ENCRYPTION_KEY", "SETTINGS_ENCRYPTION_KEY"),
+    )
+
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default=["http://localhost:5173"],
+        validation_alias=AliasChoices("CORS_ORIGINS"),
+    )
+
+    meal_photos_dir: Path = Path("data/meal-photos")
+
+    gcp_service_account_credentials: str = ""
+    gcs_images_bucket_name: str = ""
+    gcs_meal_photos_folder: str = "meal-photos"
+    gcs_check_in_photos_folder: str = "check-in-photos"
+
+    jwt_secret_key: str
+    jwt_access_token_expire_minutes: int = 60
+    jwt_refresh_token_expire_days: int = 7
+    cookie_secure: bool = False
+
+    garmin_fetch_concurrency: int = 3
+
+    @field_validator("cors_origins", mode="plain")
+    @classmethod
+    def _split_origins(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("meal_photos_dir", mode="after")
+    @classmethod
+    def _resolve_photos_dir(cls, value: Path) -> Path:
+        return value if value.is_absolute() else REPO_ROOT / value
+
+    @field_validator("garmin_fetch_concurrency", mode="before")
+    @classmethod
+    def _parse_concurrency(cls, value: Any) -> Any:
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            return 3
+
+    @field_validator("garmin_fetch_concurrency", mode="after")
+    @classmethod
+    def _floor_concurrency(cls, value: int) -> int:
+        return value if value > 0 else 3
+
+    @property
+    def database_url(self) -> str:
         user = quote_plus(self.postgres_user)
         password = quote_plus(self.postgres_password)
-        self.database_url = (
-            f"postgresql://{user}:{password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        return (
+            f"postgresql://{user}:{password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
-        self.encryption_key = os.environ.get("SETTINGS_ENCRYPTION_KEY", "")
-        origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173")
-        self.cors_origins = [o.strip() for o in origins.split(",") if o.strip()]
-        photos_dir = os.environ.get("MEAL_PHOTOS_DIR", "data/meal-photos")
-        self.meal_photos_dir = Path(photos_dir)
-        if not self.meal_photos_dir.is_absolute():
-            self.meal_photos_dir = REPO_ROOT / self.meal_photos_dir
-        self.gcp_service_account_credentials = os.environ.get("GCP_SERVICE_ACCOUNT_CREDENTIALS", "")
-        self.gcs_images_bucket_name = os.environ.get("GCS_IMAGES_BUCKET_NAME", "")
-        self.gcs_meal_photos_folder = os.environ.get("GCS_MEAL_PHOTOS_FOLDER", "meal-photos")
-        self.gcs_check_in_photos_folder = os.environ.get(
-            "GCS_CHECK_IN_PHOTOS_FOLDER", "check-in-photos"
-        )
-        self.jwt_secret_key = os.environ.get("JWT_SECRET_KEY", "dev-secret-change-me")
-        self.jwt_access_token_expire_minutes = int(
-            os.environ.get("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60")
-        )
-        self.jwt_refresh_token_expire_days = int(
-            os.environ.get("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7")
-        )
-        self.cookie_secure = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
-        raw = os.environ.get("GARMIN_FETCH_CONCURRENCY", "3").strip()
-        try:
-            concurrency = int(raw)
-        except ValueError:
-            concurrency = 3
-        self.garmin_fetch_concurrency = concurrency if concurrency > 0 else 3
 
 
 @lru_cache

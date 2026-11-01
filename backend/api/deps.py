@@ -48,7 +48,7 @@ def get_macros_estimator(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail="Could not decrypt stored API key. Check SETTINGS_ENCRYPTION_KEY.",
+            detail="Could not decrypt stored API key. Check ENCRYPTION_KEY.",
         ) from exc
 
     return MacrosEstimator(

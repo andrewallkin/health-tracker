@@ -19,7 +19,7 @@ def test_mask_api_key_long_value() -> None:
 
 
 def test_encrypt_decrypt_with_derived_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SETTINGS_ENCRYPTION_KEY", "not-a-fernet-key-but-long-enough")
+    monkeypatch.setenv("ENCRYPTION_KEY", "not-a-fernet-key-but-long-enough")
     from backend.config import get_settings
 
     get_settings.cache_clear()
@@ -33,7 +33,7 @@ def test_encrypt_decrypt_with_derived_key(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_decrypt_invalid_ciphertext_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     key = Fernet.generate_key().decode()
-    monkeypatch.setenv("SETTINGS_ENCRYPTION_KEY", key)
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
     from backend.config import get_settings
 
     get_settings.cache_clear()
@@ -45,12 +45,13 @@ def test_decrypt_invalid_ciphertext_raises(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_encrypt_without_key_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
     monkeypatch.delenv("SETTINGS_ENCRYPTION_KEY", raising=False)
     from backend.config import get_settings
 
     get_settings.cache_clear()
 
-    with pytest.raises(EncryptionError, match="SETTINGS_ENCRYPTION_KEY"):
+    with pytest.raises(EncryptionError, match="ENCRYPTION_KEY"):
         encrypt_api_key("sk-test")
 
     get_settings.cache_clear()
