@@ -28,6 +28,14 @@ os.environ.setdefault("POSTGRES_DB", "test")
 os.environ.pop("GCP_SERVICE_ACCOUNT_CREDENTIALS", None)
 os.environ.pop("GCS_IMAGES_BUCKET_NAME", None)
 
+from backend.config import Settings  # noqa: E402
+
+# Tests must not depend on a developer's local .env file: pydantic-settings
+# reads it directly (os.environ changes alone can't neutralize it), which
+# would enable GCS storage or provide an encryption key that tests assume
+# is absent. Point the settings sources at no env file, like CI.
+Settings.model_config = {**Settings.model_config, "env_file": None}
+
 from backend.database import Base, get_db  # noqa: E402
 from backend.gcs import reset_gcs_service  # noqa: E402
 from backend.main import app  # noqa: E402
