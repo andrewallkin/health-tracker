@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from datetime import datetime, timezone
 
 import pytest
@@ -143,7 +144,8 @@ def test_air_bike_duration_set():
 
 
 def test_extra_unknown_fields_are_ignored():
-    raw = {**SAMPLE_WORKOUT, "some_future_field": {"nested": True}}
+    raw = copy.deepcopy(SAMPLE_WORKOUT)
+    raw["some_future_field"] = {"nested": True}
     raw["exercises"][0]["sets"][0]["future_set_field"] = 1
 
     workout = HevyWorkout.model_validate(raw)
