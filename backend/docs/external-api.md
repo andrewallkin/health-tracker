@@ -116,7 +116,7 @@ Hevy strength data lives behind the same API key. Read endpoints are served from
 
 Hevy request and response keys are `snake_case`. The nutrition and health endpoints above use `camelCase`; the Hevy ones do not.
 
-Id formats: workout and routine ids are 36-character UUID strings; routine-folder ids are plain integers (`4063618`); exercise template ids are short uppercase hex strings (8 characters, e.g. `55E6546F`). `GET /api/external/hevy/metadata` returns this note plus every valid filter value.
+Id formats: workout and routine ids are 36-character UUID strings; routine-folder ids are plain integers (`4063618`); exercise template ids are 8-character uppercase hex strings (`55E6546F`) for catalogue exercises and UUID strings for custom ones. `GET /api/external/hevy/metadata` returns this note plus every valid filter value.
 
 All date params are `YYYY-MM-DD`. They compare against `local_date`, the SAST calendar day of the workout, not the UTC day.
 
@@ -201,9 +201,9 @@ POST returns 201 with Hevy's routine response. PUT is a FULL overwrite: Hevy rep
 
 ### Body measurements
 
-PUT `/api/external/hevy/body-measurements/{date}` (`date` is `YYYY-MM-DD`; non-dates are 400) forwards any of `weight_kg`, `lean_mass_kg`, `fat_percent`, `neck_cm`, `shoulder_cm`, `chest_cm`, `left_bicep_cm`, `right_bicep_cm`, `left_forearm_cm`, `right_forearm_cm`, `abdomen`, `waist`, `hips`, `left_thigh`, `right_thigh`, `left_calf`, `right_calf` to Hevy and returns its response. Every field is overwritten for that date: a weight-only write clears all other measurements Hevy holds for that day. Send the full field set you want kept.
+PUT `/api/external/hevy/body-measurements/{date}` (`date` is `YYYY-MM-DD`; non-dates are 400) forwards any of `weight_kg`, `lean_mass_kg`, `fat_percent`, `neck_cm`, `shoulder_cm`, `chest_cm`, `left_bicep_cm`, `right_bicep_cm`, `left_forearm_cm`, `right_forearm_cm`, `abdomen`, `waist`, `hips`, `left_thigh`, `right_thigh`, `left_calf`, `right_calf` to Hevy and returns its response. This proxy does not merge: Hevy overwrites the whole day's measurement with the body you send, so fields you omit are cleared. Send the full field set you want kept.
 
-The `PUT /api/external/weight` endpoint above already dual-writes `weight_kg` to Hevy automatically when the server has `HEVY_API_KEY` configured. A Hevy failure there never fails the local write; it is reported in the response as `hevy_error`.
+The `PUT /api/external/weight` endpoint above also dual-writes `weight_kg` to Hevy automatically when the server has `HEVY_API_KEY` configured. Unlike this proxy, that dual-write merges: it reads the day's existing Hevy measurement first and updates only `weight_kg`, so fat and circumference measurements for that day survive. A Hevy failure there never fails the local write; it is reported in the response as `hevy_error`.
 
 ### Garmin links
 
@@ -217,7 +217,7 @@ The server also links automatically: a sync links each workout to the closest Ga
 
 `POST /api/external/hevy/load/templates` syncs the full exercise-template catalogue (~454 entries) and `POST /api/external/hevy/load/workouts` backfills every workout from the paginated feed (~145 workouts). Both return `{"count": N}` and are idempotent — re-running is safe. They are bulk operations, not reads: Hevy allows one request per second and 10 items per page, so the workout backfill takes ~15 seconds and the template catalogue ~45. Call them before building anything on top of the mirror.
 
-`POST /api/external/hevy/load/events` applies workout update/delete events since the last processed one and returns `{"count": N}`. Run `/load/workouts` first: the server's background catch-up stamps its event cursor at the current time on its first cycle, so events older than that are never applied — without a backfill the mirror only sees workouts that changed after startup.
+`POST /api/external/hevy/load/events` applies workout update/delete events since the last processed one and returns `{"count": N}`. Run `/load/workouts` first: the events feed only covers workouts that changed inside its window, so without the bulk backfill the mirror is missing older history. The server's background catch-up applies the entire feed on its first cycle — there is no event cursor yet, so nothing is skipped — and then pins its cursor at the newest event timestamp.
 
 ### Strength in the day views
 

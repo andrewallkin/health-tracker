@@ -72,8 +72,10 @@ EXERCISE_TYPES: list[str] = [
 ]
 SET_TYPES: list[str] = ["warmup", "normal", "failure", "dropset"]
 ID_FORMATS_NOTE = (
-    "Workout and routine ids are 36-character UUID strings; exercise template "
-    "ids are short uppercase hex strings (8 characters, e.g. '55E6546F')."
+    "Workout and routine ids are 36-character UUID strings; routine-folder ids "
+    "are plain integers; exercise template ids are 8-character uppercase hex "
+    "strings (e.g. '55E6546F') for catalogue exercises and 36-character UUID "
+    "strings for custom exercises."
 )
 
 # Exercise types whose sets carry duration/distance instead of weight × reps.
