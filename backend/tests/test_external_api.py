@@ -5,11 +5,13 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import requests
 from fastapi import HTTPException
 
 from backend.api import external_service
 from backend.api.external_time import today_key
 from backend.api.routes import external
+from backend.config import Settings
 from backend.database import get_db
 from backend.db_models import (
     CheckInPhotoRow,
@@ -18,6 +20,7 @@ from backend.db_models import (
     GarminDailyHealthRow,
     GarminMetricSnapshotRow,
 )
+from backend.hevy_client import HevyAPIError
 from backend.tests.conftest import register_user
 from backend.tests.test_health_api import connect_garmin, health_payload
 
@@ -815,6 +818,112 @@ def test_weight_put_keeps_notes_and_photos_and_reports_averages(client, auth_hea
     assert too_light.status_code == 400
     future = client.get("/api/external/weight", headers=headers, params={"date": "2099-01-01"})
     assert future.status_code == 400
+
+
+class _FakeHevyClient:
+    """Records put_body_measurement calls; raises the canned error when set."""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        self.calls: list[tuple[str, dict]] = []
+        self.error = error
+
+    def put_body_measurement(self, date: str, body: dict) -> dict:
+        self.calls.append((date, body))
+        if self.error is not None:
+            raise self.error
+        return {}
+
+
+HEVY_PUT_FAILURE = HevyAPIError(
+    'Hevy PUT /v1/body_measurements/2026-09-28 failed with status 500: {"error":"boom"}',
+    status=500,
+)
+
+
+def _patch_hevy(client, monkeypatch, fake: _FakeHevyClient, api_key: str = "hevy-key") -> None:
+    settings = Settings(hevy_api_key=api_key)
+    monkeypatch.setattr(external_service, "get_settings", lambda: settings)
+    # Mirror the real factory's contract: no key configured -> no client.
+    monkeypatch.setattr(
+        external_service,
+        "hevy_client_from_settings",
+        lambda settings: fake if settings.hevy_api_key else None,
+    )
+
+
+def test_upsert_weight_dual_writes_weight_to_hevy(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient()
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    # Hevy's PutBodyMeasurement weight unit is kilograms (verified against the
+    # live OpenAPI spec), so the local kg value is forwarded unchanged.
+    assert fake.calls == [("2026-09-28", {"weight_kg": 80.5})]
+    assert "hevy_error" not in response.json()
+    check_in = client.get("/api/check-ins", headers=auth_headers, params={"date": "2026-09-28"})
+    assert check_in.json()["weightKg"] == 80.5
+
+
+def test_upsert_weight_hevy_failure_keeps_local_check_in(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient(error=HEVY_PUT_FAILURE)
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["weightKg"] == 80.5
+    assert response.json()["hevy_error"] == str(HEVY_PUT_FAILURE)
+    check_in = client.get("/api/check-ins", headers=auth_headers, params={"date": "2026-09-28"})
+    assert check_in.json()["weightKg"] == 80.5
+
+
+def test_upsert_weight_hevy_network_failure_keeps_local_check_in(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient(error=requests.ConnectionError("Hevy unreachable"))
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["hevy_error"] == "Hevy unreachable"
+    check_in = client.get("/api/check-ins", headers=auth_headers, params={"date": "2026-09-28"})
+    assert check_in.json()["weightKg"] == 80.5
+
+
+def test_upsert_weight_skips_hevy_without_api_key(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient()
+    _patch_hevy(client, monkeypatch, fake, api_key="")
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    assert fake.calls == []
+    assert "hevy_error" not in response.json()
 
 
 def test_day_status_get_defaults_to_today_and_requires_auth(client, auth_headers) -> None:

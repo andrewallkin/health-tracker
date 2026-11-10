@@ -4,6 +4,7 @@ import uuid
 import calendar
 from datetime import date, timedelta
 
+import requests
 from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -23,8 +24,10 @@ from ..db_models import (
     utcnow,
 )
 from ..garmin_client import _dict, _number, garmin_from_tokens
+from ..hevy_client import HevyAPIError, hevy_client_from_settings
 from .external_time import add_days, parse_date_key, today_key
 from .health_service import GarminNotConnectedError, require_garmin_connected, resolve_dates, resolve_day
+from .hevy_strength import build_strength_block
 from .mappers import get_daily_goal, get_or_create_app_settings
 from .compose import (
     cascade_delete_food,
@@ -593,41 +596,50 @@ def _health_for_dates(db: Session, user_id: str, dates: list[str]) -> tuple[str 
     return None, {day.date: day for day in days}
 
 
-def _health_block(day: DailyHealth | None, reason: str | None) -> dict:
+def _health_block(
+    db: Session, user_id: str, date_key: str, day: DailyHealth | None, reason: str | None
+) -> dict:
+    # Strength comes from Hevy workouts, independent of Garmin health: the
+    # block is attached (when the day has workouts) to unavailable days too.
+    strength = build_strength_block(db, user_id, date_key)
     if reason is not None or day is None:
-        return {"status": "unavailable", "reason": reason or "missing"}
-    return {
-        "status": "ready",
-        "totalCalories": day.totalCalories,
-        "activeCalories": day.activeCalories,
-        "bmrCalories": day.bmrCalories,
-        "steps": day.steps,
-        "stepGoal": day.stepGoal,
-        "restingHr": day.restingHr,
-        "minHr": day.minHr,
-        "maxHr": day.maxHr,
-        "restingHr7dAvg": day.avgRestingHr7d,
-        "hrv": {"value": day.hrv, "status": day.hrvStatus, "weeklyAvg": day.hrvWeeklyAvg},
-        "sleep": {
-            "totalHours": day.sleepHours,
-            "deepHours": day.deepSleepHours,
-            "remHours": day.remSleepHours,
-            "lightHours": day.lightSleepHours,
-            "avgHr": day.sleepAvgHr,
-            "score": day.sleepScore,
-        },
-        "activities": [_activity_out(activity) for activity in day.activities],
-        "trainingReadiness": day.trainingReadiness,
-        "trainingStatus": day.trainingStatus,
-        "bodyBattery": day.bodyBattery,
-        "stress": day.stress,
-        "enduranceScore": day.enduranceScore,
-        "intensityMinutes": day.intensityMinutes,
-        "hillScore": day.hillScore,
-        "fitnessAge": day.fitnessAge,
-        "respiration": day.respiration,
-        "spo2": day.spo2,
-    }
+        block: dict = {"status": "unavailable", "reason": reason or "missing"}
+    else:
+        block = {
+            "status": "ready",
+            "totalCalories": day.totalCalories,
+            "activeCalories": day.activeCalories,
+            "bmrCalories": day.bmrCalories,
+            "steps": day.steps,
+            "stepGoal": day.stepGoal,
+            "restingHr": day.restingHr,
+            "minHr": day.minHr,
+            "maxHr": day.maxHr,
+            "restingHr7dAvg": day.avgRestingHr7d,
+            "hrv": {"value": day.hrv, "status": day.hrvStatus, "weeklyAvg": day.hrvWeeklyAvg},
+            "sleep": {
+                "totalHours": day.sleepHours,
+                "deepHours": day.deepSleepHours,
+                "remHours": day.remSleepHours,
+                "lightHours": day.lightSleepHours,
+                "avgHr": day.sleepAvgHr,
+                "score": day.sleepScore,
+            },
+            "activities": [_activity_out(activity) for activity in day.activities],
+            "trainingReadiness": day.trainingReadiness,
+            "trainingStatus": day.trainingStatus,
+            "bodyBattery": day.bodyBattery,
+            "stress": day.stress,
+            "enduranceScore": day.enduranceScore,
+            "intensityMinutes": day.intensityMinutes,
+            "hillScore": day.hillScore,
+            "fitnessAge": day.fitnessAge,
+            "respiration": day.respiration,
+            "spo2": day.spo2,
+        }
+    if strength is not None:
+        block["strength"] = strength
+    return block
 
 
 def build_today(db: Session, user_id: str, date_key: str) -> dict:
@@ -654,7 +666,7 @@ def build_today(db: Session, user_id: str, date_key: str) -> dict:
         "entries": [_entry_out(entry) for entry in entries],
         "notTracked": get_day_status_for_date(db, user_id, date_key) is not None,
         "weightKg": check_in.weight_kg if check_in is not None else None,
-        "health": _health_block(days.get(date_key), reason),
+        "health": _health_block(db, user_id, date_key, days.get(date_key), reason),
     }
 
 
@@ -805,12 +817,12 @@ def _date_span(from_key: str, to_key: str) -> list[str]:
     return [(start + timedelta(days=offset)).isoformat() for offset in range(span_days)]
 
 
-def _range_day_out(date_str: str, day: DailyHealth | None, today: str) -> dict:
+def _range_day_out(db: Session, user_id: str, date_str: str, day: DailyHealth | None, today: str) -> dict:
     if date_str > today:
         return {"date": date_str, "status": "unavailable", "reason": "future"}
     if day is None:
         return {"date": date_str, "status": "unavailable", "reason": "missing"}
-    return {"date": day.date, **_health_block(day, None)}
+    return {"date": day.date, **_health_block(db, user_id, date_str, day, None)}
 
 
 def build_health_range(db: Session, user_id: str, from_key: str, to_key: str) -> dict:
@@ -844,7 +856,7 @@ def build_health_range(db: Session, user_id: str, from_key: str, to_key: str) ->
         "from": from_key,
         "to": to_key,
         "status": "ready",
-        "days": [_range_day_out(date_str, days.get(date_str), today) for date_str in span],
+        "days": [_range_day_out(db, user_id, date_str, days.get(date_str), today) for date_str in span],
     }
 
 
@@ -1050,4 +1062,15 @@ def upsert_weight(db: Session, user_id: str, date_key: str, weight_kg: float) ->
     else:
         row.weight_kg = weight_kg
     db.commit()
-    return build_weight(db, user_id, date_key)
+    result = build_weight(db, user_id, date_key)
+    # Best-effort dual-write to Hevy once the local check-in is committed. Hevy's
+    # PutBodyMeasurement schema (verified against the live OpenAPI spec) takes
+    # weight_kg in kilograms, so the value is forwarded unchanged. A Hevy
+    # failure must never fail the local write: it is reported via "hevy_error".
+    client = hevy_client_from_settings(get_settings())
+    if client is not None:
+        try:
+            client.put_body_measurement(date_key, {"weight_kg": weight_kg})
+        except (HevyAPIError, requests.RequestException) as err:
+            result["hevy_error"] = str(err)
+    return result
