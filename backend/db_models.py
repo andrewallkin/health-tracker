@@ -296,7 +296,7 @@ class GarminMetricSnapshotRow(Base):
 class HevyExerciseTemplateRow(Base):
     __tablename__ = "hevy_exercise_templates"
 
-    id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     type: Mapped[str] = mapped_column(String(32), nullable=False)
     primary_muscle_group: Mapped[str] = mapped_column(String(32), nullable=False, index=True)

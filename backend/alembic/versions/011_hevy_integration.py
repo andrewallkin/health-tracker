@@ -18,7 +18,7 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "hevy_exercise_templates",
-        sa.Column("id", sa.String(length=16), nullable=False),
+        sa.Column("id", sa.String(length=64), nullable=False),
         sa.Column("title", sa.String(length=200), nullable=False),
         sa.Column("type", sa.String(length=32), nullable=False),
         sa.Column("primary_muscle_group", sa.String(length=32), nullable=False),

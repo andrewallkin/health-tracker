@@ -162,6 +162,33 @@ def test_hevy_exercise_template_roundtrip(db_session) -> None:
     assert row.updated_at is not None
 
 
+def test_hevy_exercise_template_accepts_uuid_sized_id(db_session) -> None:
+    # Real Hevy custom-exercise template ids are full UUIDs (36 chars); the
+    # column must be wide enough for them (regression guard: width 64).
+    assert HevyExerciseTemplateRow.__table__.c.id.type.length == 64
+
+    template_id = str(uuid.uuid4())
+    assert len(template_id) == 36
+
+    template = HevyExerciseTemplateRow(
+        id=template_id,
+        title="Custom Cable Twist",
+        type="weight",
+        primary_muscle_group="core",
+        secondary_muscle_groups=[],
+        equipment="cable",
+        is_custom=True,
+        thumbnail_url="https://cdn.hevyapp.com/templates/twist.png",
+    )
+    db_session.add(template)
+    db_session.commit()
+
+    row = db_session.get(HevyExerciseTemplateRow, template_id)
+    assert row is not None
+    assert row.id == template_id
+    assert row.is_custom is True
+
+
 def test_hevy_sync_state_user_id_unique(db_session) -> None:
     user = _create_user(db_session)
 
