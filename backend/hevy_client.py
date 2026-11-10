@@ -106,8 +106,25 @@ class HevyClient:
                 return None
             raise
 
+    def create_body_measurement(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Create a body measurement entry for the date inside ``body``.
+
+        Hevy's ``POST /v1/body_measurements`` takes a full ``BodyMeasurement``
+        — ``date`` is a required body field (``YYYY-MM-DD``), unlike the
+        update-only ``PUT /v1/body_measurements/{date}`` — and returns 201
+        with an empty response body; it answers 409 when a measurement
+        already exists for that date (verified against the live OpenAPI spec).
+        """
+        return self._request("POST", "/v1/body_measurements", json=body)
+
     def put_body_measurement(self, date: str, body: dict[str, Any]) -> dict[str, Any]:
-        """Upsert body measurements for ``YYYY-MM-DD`` (all fields overwritten)."""
+        """Update an existing body measurement for ``YYYY-MM-DD`` (all fields overwritten).
+
+        Update-only despite the name: Hevy answers 404 ("Body measurement not
+        found") when no measurement exists for the date — callers that need
+        create-on-first-write use :meth:`create_body_measurement` as a
+        fallback.
+        """
         return self._request("PUT", f"/v1/body_measurements/{date}", json=body)
 
     def get_user_info(self) -> dict[str, Any]:

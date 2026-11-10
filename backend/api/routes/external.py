@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
 from ...config import get_settings
@@ -478,9 +478,13 @@ def put_hevy_body_measurement(
     hevy_client: HevyClient = Depends(require_hevy_configured),
 ) -> dict:
     parse_date_key(date)
-    return hevy_service.put_body_measurement_proxy(
+    result, created = hevy_service.put_body_measurement_proxy(
         db, user, hevy_client, date, payload.model_dump(exclude_unset=True)
     )
+    if created:
+        # Hevy's create response body is empty; the proxy reports it as {}.
+        return JSONResponse(status_code=201, content=result)
+    return result
 
 
 @router.post("/hevy/links")

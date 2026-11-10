@@ -132,7 +132,7 @@ All date params are `YYYY-MM-DD`. They compare against `local_date`, the SAST ca
 | `POST /api/external/hevy/routines` | Create a routine in Hevy. |
 | `PUT /api/external/hevy/routines/{routineId}` | Overwrite a routine in Hevy. |
 | `POST /api/external/hevy/routine-folders` | Create a routine folder in Hevy. |
-| `PUT /api/external/hevy/body-measurements/{date}` | Overwrite that day's Hevy body measurements. |
+| `PUT /api/external/hevy/body-measurements/{date}` | Upsert that day's Hevy body measurements (creates the day's entry on first write). |
 | `POST /api/external/hevy/links` | Link a Garmin activity to a Hevy workout. |
 | `DELETE /api/external/hevy/links` | Remove that link. |
 | `POST /api/external/hevy/load/templates` | Bulk-sync the exercise-template catalogue. |
@@ -203,9 +203,11 @@ POST returns 201 with Hevy's routine response. PUT is a FULL overwrite: Hevy rep
 
 ### Body measurements
 
-PUT `/api/external/hevy/body-measurements/{date}` (`date` is `YYYY-MM-DD`; non-dates are 400) forwards any of `weight_kg`, `lean_mass_kg`, `fat_percent`, `neck_cm`, `shoulder_cm`, `chest_cm`, `left_bicep_cm`, `right_bicep_cm`, `left_forearm_cm`, `right_forearm_cm`, `abdomen`, `waist`, `hips`, `left_thigh`, `right_thigh`, `left_calf`, `right_calf` to Hevy and returns its response. This proxy does not merge: Hevy overwrites the whole day's measurement with the body you send, so fields you omit are cleared. Send the full field set you want kept.
+PUT `/api/external/hevy/body-measurements/{date}` (`date` is `YYYY-MM-DD`; non-dates are 400) forwards any of `weight_kg`, `lean_mass_kg`, `fat_percent`, `neck_cm`, `shoulder_cm`, `chest_cm`, `left_bicep_cm`, `right_bicep_cm`, `left_forearm_cm`, `right_forearm_cm`, `abdomen`, `waist`, `hips`, `left_thigh`, `right_thigh`, `left_calf`, `right_calf` to Hevy. This proxy does not merge: Hevy overwrites the whole day's measurement with the body you send, so fields you omit are cleared. Send the full field set you want kept.
 
-The `PUT /api/external/weight` endpoint above also dual-writes `weight_kg` to Hevy automatically when the server has `HEVY_API_KEY` configured. Unlike this proxy, that dual-write merges: it reads the day's existing Hevy measurement first and updates only `weight_kg`, so fat and circumference measurements for that day survive. A Hevy failure there never fails the local write; it is reported in the response as `hevy_error`.
+The proxy upserts: Hevy's `PUT /v1/body_measurements/{date}` is update-only — it answers 404 when the date has no measurement yet — so the first write for a date falls back to `POST /v1/body_measurements` with the same fields plus `date` (Hevy's POST schema carries the date inside its body) and returns 201 with `{}` (Hevy's create response body is empty); later writes PUT and return 200 with Hevy's response. If another writer creates the day's entry between those two calls (the create answers 409), the proxy re-fetches the measurement, merges your fields on top, and retries the PUT. Other Hevy errors and network failures surface as 502.
+
+The `PUT /api/external/weight` endpoint above also dual-writes `weight_kg` to Hevy automatically when the server has `HEVY_API_KEY` configured, with the same upsert semantics: it creates the day's measurement on first write and updates it after. Unlike this proxy, the dual-write merges: it reads the day's existing Hevy measurement first and updates only `weight_kg`, so fat and circumference measurements for that day survive. A Hevy failure there never fails the local write; it is reported in the response as `hevy_error`.
 
 ### Garmin links
 
