@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ...database import get_db
 from ...db_models import UserRow
+from .. import hevy_service
 from ..external_auth import get_user_from_external_api_key
 from ..external_service import (
     build_health_range,
@@ -43,6 +44,13 @@ from ..schemas_external import (
     ExternalMealUpdate,
     ExternalQuickLog,
     ExternalWeightWrite,
+    HevyExerciseTemplateOut,
+    HevyHabitProfile,
+    HevyMetadata,
+    HevyPrEntry,
+    HevyProgressionEntry,
+    HevyWorkoutDetail,
+    HevyWorkoutSummary,
 )
 
 router = APIRouter(prefix="/external", tags=["external"])
@@ -320,3 +328,96 @@ def get_health_snapshots(
     if limit is not None and not 1 <= limit <= 52:
         raise HTTPException(status_code=400, detail="Invalid limit")
     return list_health_snapshots(db, user.id, 52 if limit is None else limit)
+
+
+@router.get("/hevy/workouts", response_model=list[HevyWorkoutSummary])
+def get_hevy_workouts(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None, alias="to"),
+    limit: int = Query(default=50),
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> list[dict]:
+    if not 1 <= limit <= 200:
+        raise HTTPException(status_code=400, detail="Invalid limit")
+    return hevy_service.list_hevy_workouts(
+        db, user.id, from_key=from_ or None, to_key=to or None, limit=limit
+    )
+
+
+@router.get("/hevy/workouts/{workout_id}", response_model=HevyWorkoutDetail)
+def get_hevy_workout_detail(
+    workout_id: str,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    workout = hevy_service.get_hevy_workout(db, user.id, workout_id)
+    if workout is None:
+        raise HTTPException(status_code=404, detail="Workout not found")
+    return workout
+
+
+@router.get("/hevy/exercises", response_model=list[HevyExerciseTemplateOut])
+def get_hevy_exercises(
+    muscle_group: str | None = Query(default=None),
+    equipment: str | None = Query(default=None),
+    type: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> list[dict]:
+    return hevy_service.list_hevy_exercises(
+        db, muscle_group=muscle_group, equipment=equipment, type_=type, search=search
+    )
+
+
+@router.get("/hevy/metadata", response_model=HevyMetadata)
+def get_hevy_metadata(
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    return hevy_service.hevy_metadata()
+
+
+@router.get(
+    "/hevy/exercises/{template_id}/progression",
+    response_model=list[HevyProgressionEntry],
+    response_model_exclude_none=True,
+)
+def get_hevy_exercise_progression(
+    template_id: str,
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None, alias="to"),
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> list[dict]:
+    progression = hevy_service.exercise_progression(
+        db, user.id, template_id, from_key=from_ or None, to_key=to or None
+    )
+    if progression is None:
+        raise HTTPException(status_code=404, detail="Exercise template not found")
+    return progression
+
+
+@router.get(
+    "/hevy/prs",
+    response_model=list[HevyPrEntry],
+    response_model_exclude_none=True,
+)
+def get_hevy_prs(
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> list[dict]:
+    return hevy_service.exercise_prs(db, user.id)
+
+
+@router.get("/hevy/habits", response_model=HevyHabitProfile)
+def get_hevy_habits(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None, alias="to"),
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    return hevy_service.exercise_habits(
+        db, user.id, from_key=from_ or None, to_key=to or None
+    )

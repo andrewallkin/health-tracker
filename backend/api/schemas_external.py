@@ -101,3 +101,89 @@ class ExternalApiKeyCreated(BaseModel):
     apiKey: str
     prefix: str
     createdAt: str
+
+
+# --- Hevy read endpoints ------------------------------------------------------
+
+
+class HevyWorkoutSummary(BaseModel):
+    id: str
+    title: str
+    start_time: str
+    end_time: str
+    local_date: str
+    routine_id: str | None = None
+    garmin_activity_ids: list[str] = Field(default_factory=list)
+    exercise_count: int
+    set_count: int
+
+
+class HevyWorkoutDetail(HevyWorkoutSummary):
+    description: str | None = None
+    exercises: list[dict] = Field(default_factory=list)
+
+
+class HevyExerciseTemplateOut(BaseModel):
+    id: str
+    title: str
+    type: str
+    primary_muscle_group: str
+    secondary_muscle_groups: list[str] = Field(default_factory=list)
+    equipment: str
+    is_custom: bool
+    thumbnail_url: str | None = None
+
+
+class HevyMetadata(BaseModel):
+    muscle_groups: list[str]
+    equipment: list[str]
+    exercise_types: list[str]
+    set_types: list[str]
+    id_formats: str
+
+
+class HevyProgressionEntry(BaseModel):
+    """Weight sessions carry the e1RM/weight/volume fields; cardio sessions the
+    duration/distance ones. Absent fields are omitted from the response."""
+
+    date: str
+    workout_id: str
+    n_sets: int
+    best_e1rm: float | None = None
+    top_weight: float | None = None
+    total_volume_kg: float | None = None
+    best_duration_seconds: int | None = None
+    best_distance_meters: int | None = None
+
+
+class HevyPrValue(BaseModel):
+    value: float | int
+    date: str
+
+
+class HevyPrRecord(HevyPrValue):
+    metric: str
+
+
+class HevyPrEntry(BaseModel):
+    template_id: str
+    title: str
+    pr: HevyPrRecord
+    best_e1rm: HevyPrValue | None = None
+    history_count: int
+
+
+class HevyHabitExercise(BaseModel):
+    template_id: str
+    title: str
+    count: int
+
+
+class HevyEquipmentUsage(BaseModel):
+    equipment: str
+    count: int
+
+
+class HevyHabitProfile(BaseModel):
+    exercises: list[HevyHabitExercise]
+    equipment_profile: list[HevyEquipmentUsage]
