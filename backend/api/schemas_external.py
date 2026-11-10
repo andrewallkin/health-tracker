@@ -187,3 +187,79 @@ class HevyEquipmentUsage(BaseModel):
 class HevyHabitProfile(BaseModel):
     exercises: list[HevyHabitExercise]
     equipment_profile: list[HevyEquipmentUsage]
+
+
+# --- Hevy write endpoints (mirror Hevy's request bodies) ------------------------
+
+
+class HevyRepRange(BaseModel):
+    start: int | None = None
+    end: int | None = None
+
+
+class HevySetInput(BaseModel):
+    type: str | None = None
+    weight_kg: float | None = None
+    reps: int | None = None
+    distance_meters: int | None = None
+    duration_seconds: int | None = None
+    rep_range: HevyRepRange | None = None
+
+
+class HevyExerciseInput(BaseModel):
+    exercise_template_id: str
+    superset_id: int | None = None
+    rest_seconds: int | None = None
+    notes: str | None = None
+    sets: list[HevySetInput] = Field(default_factory=list)
+
+
+class HevyRoutinePayload(BaseModel):
+    title: str
+    folder_id: int | None = None
+    notes: str | None = None
+    exercises: list[HevyExerciseInput] = Field(default_factory=list)
+
+
+class HevyRoutineCreate(BaseModel):
+    """Hevy ``PostRoutinesRequestBody``."""
+
+    routine: HevyRoutinePayload
+
+
+class HevyRoutineUpdate(BaseModel):
+    """Hevy ``PutRoutinesRequestBody`` (same routine shape as creation)."""
+
+    routine: HevyRoutinePayload
+
+
+class HevyRoutineFolderPayload(BaseModel):
+    title: str
+
+
+class HevyRoutineFolderCreate(BaseModel):
+    """Hevy ``PostRoutineFolderRequestBody``."""
+
+    routine_folder: HevyRoutineFolderPayload
+
+
+class HevyBodyMeasurementWrite(BaseModel):
+    """Hevy ``PutBodyMeasurement`` fields; every field is overwritten server-side."""
+
+    weight_kg: float | None = None
+    lean_mass_kg: float | None = None
+    fat_percent: float | None = None
+    neck_cm: float | None = None
+    shoulder_cm: float | None = None
+    chest_cm: float | None = None
+    left_bicep_cm: float | None = None
+    right_bicep_cm: float | None = None
+    left_forearm_cm: float | None = None
+    right_forearm_cm: float | None = None
+    abdomen: float | None = None
+    waist: float | None = None
+    hips: float | None = None
+    left_thigh: float | None = None
+    right_thigh: float | None = None
+    left_calf: float | None = None
+    right_calf: float | None = None

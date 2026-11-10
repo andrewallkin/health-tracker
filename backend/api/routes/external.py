@@ -6,8 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
+from ...config import get_settings
 from ...database import get_db
 from ...db_models import UserRow
+from ...hevy_client import HevyClient, hevy_client_from_settings
 from .. import hevy_service
 from ..external_auth import get_user_from_external_api_key
 from ..external_service import (
@@ -33,7 +35,7 @@ from ..external_service import (
     update_meal,
     upsert_weight,
 )
-from ..external_time import current_hhmm, johannesburg_now, resolve_optional_date, today_key
+from ..external_time import current_hhmm, johannesburg_now, parse_date_key, resolve_optional_date, today_key
 from ..schemas_external import (
     ExternalDayStatusWrite,
     ExternalFoodCreate,
@@ -44,11 +46,15 @@ from ..schemas_external import (
     ExternalMealUpdate,
     ExternalQuickLog,
     ExternalWeightWrite,
+    HevyBodyMeasurementWrite,
     HevyExerciseTemplateOut,
     HevyHabitProfile,
     HevyMetadata,
     HevyPrEntry,
     HevyProgressionEntry,
+    HevyRoutineCreate,
+    HevyRoutineFolderCreate,
+    HevyRoutineUpdate,
     HevyWorkoutDetail,
     HevyWorkoutSummary,
 )
@@ -420,4 +426,57 @@ def get_hevy_habits(
 ) -> dict:
     return hevy_service.exercise_habits(
         db, user.id, from_key=from_ or None, to_key=to or None
+    )
+
+
+def require_hevy_configured() -> HevyClient:
+    """Shared dependency for Hevy writes: 503 when no API key is configured."""
+    client = hevy_client_from_settings(get_settings())
+    if client is None:
+        raise HTTPException(status_code=503, detail="Hevy not configured")
+    return client
+
+
+@router.post("/hevy/routines", status_code=201)
+def post_hevy_routine(
+    payload: HevyRoutineCreate,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+    hevy_client: HevyClient = Depends(require_hevy_configured),
+) -> dict:
+    return hevy_service.create_routine_proxy(db, user, hevy_client, payload)
+
+
+@router.put("/hevy/routines/{routine_id}")
+def put_hevy_routine(
+    routine_id: str,
+    payload: HevyRoutineUpdate,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+    hevy_client: HevyClient = Depends(require_hevy_configured),
+) -> dict:
+    return hevy_service.update_routine_proxy(db, user, hevy_client, routine_id, payload)
+
+
+@router.post("/hevy/routine-folders", status_code=201)
+def post_hevy_routine_folder(
+    payload: HevyRoutineFolderCreate,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+    hevy_client: HevyClient = Depends(require_hevy_configured),
+) -> dict:
+    return hevy_service.create_folder_proxy(db, user, hevy_client, payload)
+
+
+@router.put("/hevy/body-measurements/{date}")
+def put_hevy_body_measurement(
+    date: str,
+    payload: HevyBodyMeasurementWrite,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+    hevy_client: HevyClient = Depends(require_hevy_configured),
+) -> dict:
+    parse_date_key(date)
+    return hevy_service.put_body_measurement_proxy(
+        db, user, hevy_client, date, payload.model_dump(exclude_unset=True)
     )

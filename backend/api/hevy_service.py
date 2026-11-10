@@ -1,20 +1,26 @@
-"""Read-side query functions for the Hevy external endpoints.
+"""Query and write functions for the Hevy external endpoints.
 
-All reads are served from the local mirror (``hevy_workouts`` /
+Reads are served from the local mirror (``hevy_workouts`` /
 ``hevy_exercise_templates``) — no Hevy API calls at read time. Time logic
 uses the row columns (``start_time``, ``local_date``); exercise and set
 detail comes from the normalized JSON payload stored by the sync layer.
 Progression and PR math include every logged set (warmups included).
+
+Write proxies forward validated agent payloads to the Hevy API unchanged
+and surface Hevy errors as 502 responses.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..db_models import HevyExerciseTemplateRow, HevyWorkoutRow
+from ..db_models import HevyExerciseTemplateRow, HevyWorkoutRow, UserRow
+from ..hevy_client import HevyAPIError, HevyClient
+from .schemas_external import HevyRoutineCreate, HevyRoutineFolderCreate, HevyRoutineUpdate
 
 # Muscle groups observed in the Hevy exercise-template catalogue.
 MUSCLE_GROUPS: list[str] = [
@@ -485,3 +491,46 @@ def exercise_habits(
     ]
     equipment_entries.sort(key=lambda entry: (-entry["count"], entry["equipment"]))
     return {"exercises": exercise_entries, "equipment_profile": equipment_entries}
+
+
+# --- write proxies --------------------------------------------------------------
+
+
+def _hevy_forward(call, *args: object) -> dict:
+    """Invoke a Hevy client write call; surface Hevy errors as 502 responses."""
+    try:
+        return call(*args)
+    except HevyAPIError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+
+
+def create_routine_proxy(
+    db: Session, user: UserRow, client: HevyClient, body: HevyRoutineCreate
+) -> dict:
+    """Forward a validated ``PostRoutinesRequestBody`` to Hevy and return its response."""
+    return _hevy_forward(client.create_routine, body.model_dump())
+
+
+def update_routine_proxy(
+    db: Session,
+    user: UserRow,
+    client: HevyClient,
+    routine_id: str,
+    body: HevyRoutineUpdate,
+) -> dict:
+    """Forward a validated routine overwrite for ``routine_id`` to Hevy."""
+    return _hevy_forward(client.update_routine, routine_id, body.model_dump())
+
+
+def create_folder_proxy(
+    db: Session, user: UserRow, client: HevyClient, body: HevyRoutineFolderCreate
+) -> dict:
+    """Forward a validated ``PostRoutineFolderRequestBody`` to Hevy."""
+    return _hevy_forward(client.create_routine_folder, body.model_dump())
+
+
+def put_body_measurement_proxy(
+    db: Session, user: UserRow, client: HevyClient, date: str, body: dict
+) -> dict:
+    """Forward validated body-measurement fields for ``date`` to Hevy."""
+    return _hevy_forward(client.put_body_measurement, date, body)
