@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+import requests
 from fastapi.testclient import TestClient
 
 from backend.api.routes import external as external_routes
@@ -164,6 +165,19 @@ def test_hevy_api_errors_surface_as_502_with_hevy_message(
     assert response.json() == {"detail": str(HEVY_FAILURE)}
 
 
+@pytest.mark.parametrize(("method", "path", "body"), WRITE_ENDPOINTS)
+def test_network_failures_also_surface_as_502(
+    client: TestClient, fake_hevy: FakeHevyClient, method: str, path: str, body: dict
+) -> None:
+    fake_hevy.error = requests.ConnectionError("Hevy unreachable")
+    auth = _auth_headers(client)
+
+    response = client.request(method, path, json=body, headers=auth)
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Hevy unreachable"}
+
+
 # --- missing hevy_api_key maps to 503 ------------------------------------------
 
 
@@ -243,4 +257,72 @@ def test_body_measurement_rejects_malformed_date(client: TestClient, fake_hevy: 
     )
 
     assert response.status_code == 400
+    assert fake_hevy.calls == []
+
+
+def test_routine_unknown_fields_are_rejected_not_dropped(client: TestClient, fake_hevy: FakeHevyClient) -> None:
+    auth = _auth_headers(client)
+    bad_bodies = [
+        {"routine": {"title": "X", "exercizes": []}},  # typo'd exercises key
+        {"routine": ROUTINE_BODY["routine"], "idempotency_key": "abc"},  # top-level extra
+        {"routine": {"title": "X", "exercises": [{"exercise_template_id": "55E6546F", "setz": []}]}},  # typo'd sets
+        {
+            "routine": {
+                "title": "X",
+                "exercises": [{"exercise_template_id": "55E6546F", "sets": [{"type": "normal", "wieght_kg": 40.0}]}],
+            }  # typo'd weight_kg inside a set
+        },
+        {
+            "routine": {
+                "title": "X",
+                "exercises": [{"exercise_template_id": "55E6546F", "sets": [{"type": "normal", "rep_range": {"strt": 8}}]}],
+            }  # typo'd start inside rep_range
+        },
+    ]
+
+    for body in bad_bodies:
+        assert client.post("/api/external/hevy/routines", json=body, headers=auth).status_code == 422
+    assert (
+        client.put(
+            "/api/external/hevy/routines/routine-uuid",
+            json={"routine": {"title": "X", "notez": "hi"}},
+            headers=auth,
+        ).status_code
+        == 422
+    )
+    assert fake_hevy.calls == []
+
+
+def test_folder_unknown_fields_are_rejected_not_dropped(client: TestClient, fake_hevy: FakeHevyClient) -> None:
+    auth = _auth_headers(client)
+
+    response = client.post(
+        "/api/external/hevy/routine-folders",
+        json={"routine_folder": {"title": "Coach Programs", "color": "red"}},
+        headers=auth,
+    )
+
+    assert response.status_code == 422
+    assert fake_hevy.calls == []
+
+
+def test_body_measurement_unknown_fields_are_rejected_not_dropped(client: TestClient, fake_hevy: FakeHevyClient) -> None:
+    auth = _auth_headers(client)
+
+    # A typo'd field must 422 locally: forwarding an empty/partial dict would let
+    # Hevy wipe the date's measurements and answer 200 OK.
+    wrong_name = client.put(
+        "/api/external/hevy/body-measurements/2026-11-10",
+        json={"body_fat_percentage": 20.0},  # plausible misspelling of Hevy's fat_percent
+        headers=auth,
+    )
+    assert wrong_name.status_code == 422
+
+    extra_field = client.put(
+        "/api/external/hevy/body-measurements/2026-11-10",
+        json={"weight_kg": 80.5, "unit": "kg"},
+        headers=auth,
+    )
+    assert extra_field.status_code == 422
+
     assert fake_hevy.calls == []

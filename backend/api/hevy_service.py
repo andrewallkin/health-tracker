@@ -7,13 +7,14 @@ detail comes from the normalized JSON payload stored by the sync layer.
 Progression and PR math include every logged set (warmups included).
 
 Write proxies forward validated agent payloads to the Hevy API unchanged
-and surface Hevy errors as 502 responses.
+and surface Hevy and network errors as 502 responses.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import requests
 from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -497,10 +498,10 @@ def exercise_habits(
 
 
 def _hevy_forward(call, *args: object) -> dict:
-    """Invoke a Hevy client write call; surface Hevy errors as 502 responses."""
+    """Invoke a Hevy client write call; surface Hevy and network errors as 502."""
     try:
         return call(*args)
-    except HevyAPIError as err:
+    except (HevyAPIError, requests.RequestException) as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .schemas import MealSlot
 
@@ -192,12 +192,20 @@ class HevyHabitProfile(BaseModel):
 # --- Hevy write endpoints (mirror Hevy's request bodies) ------------------------
 
 
-class HevyRepRange(BaseModel):
+class _HevyWriteModel(BaseModel):
+    """Base for all Hevy write payloads: unknown fields are rejected with 422,
+    never silently dropped — a typo'd field must not reach Hevy with data
+    missing (Hevy's PUTs overwrite, so missing data is destructive)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class HevyRepRange(_HevyWriteModel):
     start: int | None = None
     end: int | None = None
 
 
-class HevySetInput(BaseModel):
+class HevySetInput(_HevyWriteModel):
     type: str | None = None
     weight_kg: float | None = None
     reps: int | None = None
@@ -206,7 +214,7 @@ class HevySetInput(BaseModel):
     rep_range: HevyRepRange | None = None
 
 
-class HevyExerciseInput(BaseModel):
+class HevyExerciseInput(_HevyWriteModel):
     exercise_template_id: str
     superset_id: int | None = None
     rest_seconds: int | None = None
@@ -214,36 +222,36 @@ class HevyExerciseInput(BaseModel):
     sets: list[HevySetInput] = Field(default_factory=list)
 
 
-class HevyRoutinePayload(BaseModel):
+class HevyRoutinePayload(_HevyWriteModel):
     title: str
     folder_id: int | None = None
     notes: str | None = None
     exercises: list[HevyExerciseInput] = Field(default_factory=list)
 
 
-class HevyRoutineCreate(BaseModel):
+class HevyRoutineCreate(_HevyWriteModel):
     """Hevy ``PostRoutinesRequestBody``."""
 
     routine: HevyRoutinePayload
 
 
-class HevyRoutineUpdate(BaseModel):
+class HevyRoutineUpdate(_HevyWriteModel):
     """Hevy ``PutRoutinesRequestBody`` (same routine shape as creation)."""
 
     routine: HevyRoutinePayload
 
 
-class HevyRoutineFolderPayload(BaseModel):
+class HevyRoutineFolderPayload(_HevyWriteModel):
     title: str
 
 
-class HevyRoutineFolderCreate(BaseModel):
+class HevyRoutineFolderCreate(_HevyWriteModel):
     """Hevy ``PostRoutineFolderRequestBody``."""
 
     routine_folder: HevyRoutineFolderPayload
 
 
-class HevyBodyMeasurementWrite(BaseModel):
+class HevyBodyMeasurementWrite(_HevyWriteModel):
     """Hevy ``PutBodyMeasurement`` fields; every field is overwritten server-side."""
 
     weight_kg: float | None = None
