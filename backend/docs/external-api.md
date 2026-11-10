@@ -78,7 +78,7 @@ Garmin connects in Settings. Health data is per calendar day in `Africa/Johannes
 
 The `health` block appears under `health` in `/today` and as each day row in `/health`. Shape:
 
-- `status` is `ready`, or `unavailable` with a `reason` (`missing`, `disconnected`, `future`, or `error`). Unavailable `/health` day rows carry only `date`, `status`, and `reason`; under `/today` the unavailable block is `{status, reason}` with no `date`.
+- `status` is `ready`, or `unavailable` with a `reason` (`missing`, `disconnected`, `future`, or `error`). Unavailable `/health` day rows carry `date`, `status`, and `reason`, plus a `strength` block when Hevy logged workouts that day; under `/today` the unavailable block is `{status, reason}` with no `date` (same optional `strength`).
 - `totalCalories`, `activeCalories`, `bmrCalories` in kcal.
 - `steps`, `stepGoal` in steps.
 - `restingHr`, `minHr`, `maxHr`, `restingHr7dAvg` in bpm.
@@ -109,3 +109,143 @@ Read-only. Snapshots are captured server-side every Monday around 07:00 SAST, wi
 ### Backfill script
 
 `uv run python scripts/backfill_garmin_health.py` refetches past days with the widened metrics. `--days N` sets how many days back (default 84). `--from YYYY-MM-DD --to YYYY-MM-DD` sets an explicit range, capped at 90 days. `--throttle SECONDS` paces day fetches (default 1.5). The script is resumable: days that already carry the new blocks are skipped, and one failed day does not stop the run. It authenticates with `GARMIN_EMAIL` and `GARMIN_PASSWORD`, falling back to `~/.garminconnect/garmin_tokens.json`, and re-encrypts rotated tokens into the database.
+
+## Hevy
+
+Hevy strength data lives behind the same API key. Read endpoints are served from a local mirror kept fresh by server-side syncs — they never call Hevy and answer instantly. Write endpoints are proxies that validate your payload and forward it to the Hevy API unchanged.
+
+Hevy request and response keys are `snake_case`. The nutrition and health endpoints above use `camelCase`; the Hevy ones do not.
+
+Id formats: workout and routine ids are 36-character UUID strings; routine-folder ids are plain integers (`4063618`); exercise template ids are short uppercase hex strings (8 characters, e.g. `55E6546F`). `GET /api/external/hevy/metadata` returns this note plus every valid filter value.
+
+All date params are `YYYY-MM-DD`. They compare against `local_date`, the SAST calendar day of the workout, not the UTC day.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/external/hevy/workouts?from=&to=&limit=` | Mirror workout summaries, newest first. |
+| `GET /api/external/hevy/workouts/{workoutId}` | One workout with full exercises and sets. |
+| `GET /api/external/hevy/exercises?muscle_group=&equipment=&type=&search=` | Exercise-template catalogue. |
+| `GET /api/external/hevy/metadata` | Filter values and the id-format note. |
+| `GET /api/external/hevy/exercises/{templateId}/progression?from=&to=` | Per-session stats for one exercise. |
+| `GET /api/external/hevy/prs` | Personal records, one per exercise ever done. |
+| `GET /api/external/hevy/habits?from=&to=` | Exercise and equipment frequency. |
+| `POST /api/external/hevy/routines` | Create a routine in Hevy. |
+| `PUT /api/external/hevy/routines/{routineId}` | Overwrite a routine in Hevy. |
+| `POST /api/external/hevy/routine-folders` | Create a routine folder in Hevy. |
+| `PUT /api/external/hevy/body-measurements/{date}` | Overwrite that day's Hevy body measurements. |
+| `POST /api/external/hevy/links` | Link a Garmin activity to a Hevy workout. |
+| `DELETE /api/external/hevy/links` | Remove that link. |
+| `POST /api/external/hevy/load/templates` | Bulk-sync the exercise-template catalogue. |
+| `POST /api/external/hevy/load/workouts` | Bulk-backfill every workout. |
+| `POST /api/external/hevy/load/events` | Apply workout events since the last sync. |
+
+### Workouts
+
+Each item of `GET /api/external/hevy/workouts` carries `id`, `title`, `start_time`, `end_time` (ISO timestamps), `local_date` (`YYYY-MM-DD`), `routine_id` (`null` when not started from a routine), `garmin_activity_ids` (list), `exercise_count`, and `set_count`. Optional `from` and `to` bound `local_date` inclusively; `limit` is 1 to 200, default 50, anything else 400.
+
+`GET /api/external/hevy/workouts/{workoutId}` adds `description` (`null` when none) and `exercises`. Each exercise carries `index`, `title`, `exercise_template_id`, `superset_id`, `rest_seconds`, `notes`, and `sets`. Each set carries `index`, `type` (`warmup`, `normal`, `failure`, or `dropset`), `weight_kg`, `reps`, `distance_meters`, `duration_seconds`, `rpe`, `custom_metric`, and `rep_range` (`{"start", "end"}` — routine sets only). Fields Hevy did not report are `null`. Unknown ids are 404.
+
+### Exercise catalogue
+
+`GET /api/external/hevy/exercises` returns every catalogue entry, sorted by title, no pagination: `id`, `title`, `type`, `primary_muscle_group`, `secondary_muscle_groups` (list), `equipment`, `is_custom`, `thumbnail_url` (`null` when none). All four filters are optional and combine: `muscle_group`, `equipment`, and `type` match exactly (case-insensitive), `search` is a case-insensitive substring of the title.
+
+`GET /api/external/hevy/metadata` returns `muscle_groups`, `equipment`, `exercise_types`, and `set_types` (lists of strings — use them to fill the filters and set payloads) plus `id_formats` (the id-format note above). The catalogue is empty until `POST /api/external/hevy/load/templates` has run once.
+
+### Progression and PRs
+
+`GET /api/external/hevy/exercises/{templateId}/progression` lists one entry per session containing that exercise, oldest first: `date`, `workout_id`, `n_sets`. Weight exercises add `best_e1rm`, `top_weight`, and `total_volume_kg` (e1RM = weight × (1 + reps / 30)). Duration and distance exercises add `best_duration_seconds` (and `best_distance_meters` for distance types) instead. Absent fields are omitted, not `null`. Unknown template ids are 404.
+
+`GET /api/external/hevy/prs` returns one entry per exercise ever done, sorted by title: `template_id`, `title`, `pr` (`{metric, value, date}` — the first session that reached the maximum), optional `best_e1rm` (`{value, date}`, weight exercises only — its peak can land on a different date than the top weight), and `history_count` (number of sessions). `pr.metric` is `weight_kg`, falling back to `reps` when no weight was ever logged, or `duration_seconds` / `distance_meters` for cardio exercises.
+
+Both include every logged set, warmups included.
+
+`GET /api/external/hevy/habits` returns `exercises` (`[{template_id, title, count}]` — `count` is the number of sessions containing the exercise, sorted by count then title) and `equipment_profile` (`[{equipment, count}]`, sorted the same way).
+
+### Routines and folders
+
+The write bodies mirror Hevy's own request shapes. Unknown fields are rejected with 422 — a typo cannot silently drop data, because Hevy's PUTs overwrite. A server without `HEVY_API_KEY` configured is 503; Hevy errors and network failures surface as 502.
+
+Routine create (POST `/api/external/hevy/routines`) and update (PUT `/api/external/hevy/routines/{routineId}`) take the same body:
+
+```json
+{
+  "routine": {
+    "title": "Push Day",
+    "folder_id": 4063618,
+    "notes": "Focus on form over weight",
+    "exercises": [
+      {
+        "exercise_template_id": "55E6546F",
+        "superset_id": 1,
+        "rest_seconds": 90,
+        "notes": "Stay slow and controlled",
+        "sets": [
+          {
+            "type": "normal",
+            "weight_kg": 40.0,
+            "reps": 10,
+            "distance_meters": null,
+            "duration_seconds": null,
+            "rep_range": {"start": 8, "end": 12}
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Only `title` is required; omit what does not apply. `folder_id` is a numeric folder id, not a UUID — create a folder first (`POST /api/external/hevy/routine-folders`, body `{"routine_folder": {"title": "Coach Programs"}}`, returns 201 with Hevy's response) and use the integer id from it. `type` is one of the `set_types` from metadata. `rep_range` (`{start, end}`) belongs on routine sets. Cardio exercises use `distance_meters` or `duration_seconds` instead of `weight_kg` × `reps`.
+
+POST returns 201 with Hevy's routine response. PUT is a FULL overwrite: Hevy replaces the whole routine, so every exercise you omit is deleted — send the complete routine every time.
+
+### Body measurements
+
+PUT `/api/external/hevy/body-measurements/{date}` (`date` is `YYYY-MM-DD`; non-dates are 400) forwards any of `weight_kg`, `lean_mass_kg`, `fat_percent`, `neck_cm`, `shoulder_cm`, `chest_cm`, `left_bicep_cm`, `right_bicep_cm`, `left_forearm_cm`, `right_forearm_cm`, `abdomen`, `waist`, `hips`, `left_thigh`, `right_thigh`, `left_calf`, `right_calf` to Hevy and returns its response. Every field is overwritten for that date: a weight-only write clears all other measurements Hevy holds for that day. Send the full field set you want kept.
+
+The `PUT /api/external/weight` endpoint above already dual-writes `weight_kg` to Hevy automatically when the server has `HEVY_API_KEY` configured. A Hevy failure there never fails the local write; it is reported in the response as `hevy_error`.
+
+### Garmin links
+
+`POST /api/external/hevy/links` and `DELETE /api/external/hevy/links` take `{"workout_id": "...", "garmin_activity_id": "..."}` and return `{"workout_id": "...", "garmin_activity_ids": ["..."]}`. Links are 1:1: one workout holds at most one activity, and one activity belongs to at most one workout.
+
+POST is 404 for an unknown workout, 404 when the activity is not in the workout's `local_date` Garmin data (the activity must be on that day's health row), and 409 when either side is already linked to a different partner. DELETE is 404 when the workout is unknown or the link is absent, and returns the remaining links.
+
+The server also links automatically: a sync links each workout to the closest Garmin activity starting within 20 minutes of it on the same local day. Manual links here are never overwritten by re-syncs.
+
+### Bulk load
+
+`POST /api/external/hevy/load/templates` syncs the full exercise-template catalogue (~454 entries) and `POST /api/external/hevy/load/workouts` backfills every workout from the paginated feed (~145 workouts). Both return `{"count": N}` and are idempotent — re-running is safe. They are bulk operations, not reads: Hevy allows one request per second and 10 items per page, so the workout backfill takes ~15 seconds and the template catalogue ~45. Call them before building anything on top of the mirror.
+
+`POST /api/external/hevy/load/events` applies workout update/delete events since the last processed one and returns `{"count": N}`. Run `/load/workouts` first: the server's background catch-up stamps its event cursor at the current time on its first cycle, so events older than that are never applied — without a backfill the mirror only sees workouts that changed after startup.
+
+### Strength in the day views
+
+`/today`'s `health` block and every `/health` day row carry a `strength` block when Hevy logged workouts that day — including unavailable and missing days, since it comes from Hevy, not Garmin. It is absent when the day has no workouts. Exact shape:
+
+```json
+{
+  "sessions": [
+    {
+      "workout_id": "8f2c...",
+      "title": "Push Day",
+      "start_time": "2026-11-10T14:22:32+00:00",
+      "end_time": "2026-11-10T15:10:00+00:00",
+      "garmin_activity_ids": ["24833957298"],
+      "total_volume_kg": 3200.0,
+      "hard_sets": 6,
+      "n_exercises": 7
+    }
+  ],
+  "total_volume_kg": 3200.0,
+  "hard_sets": 6
+}
+```
+
+Sessions are ordered by start time. `total_volume_kg` sums `weight_kg × reps` over non-warmup sets (cardio sets contribute 0). `hard_sets` counts non-warmup sets with `rpe >= 8`, or `type` `failure`, or a `normal` set without `rpe` at that exercise's top non-warmup weight (ties all count). Warmup sets never count.
+
+### Webhook
+
+`POST /api/hevy/webhook` is the server-to-server receiver Hevy calls when a workout changes. It does not use the external API key: authorization is `Authorization: Bearer <HEVY_WEBHOOK_TOKEN>` (the raw token without the `Bearer` prefix is also accepted). Body is `{"workoutId": "<hevy workout id>"}`.
+
+The handler validates and answers `200 {"status": "accepted"}` immediately; the sync runs in the background. Wrong or missing token is 401, a body without a non-empty `workoutId` is 400, and a server without `HEVY_WEBHOOK_TOKEN` configured is 503.
