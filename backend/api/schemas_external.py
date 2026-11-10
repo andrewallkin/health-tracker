@@ -271,3 +271,10 @@ class HevyBodyMeasurementWrite(_HevyWriteModel):
     right_thigh: float | None = None
     left_calf: float | None = None
     right_calf: float | None = None
+
+
+class HevyLinkWrite(BaseModel):
+    """Manual Garmin<->Hevy link request body."""
+
+    workout_id: str
+    garmin_activity_id: str

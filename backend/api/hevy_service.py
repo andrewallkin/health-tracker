@@ -12,6 +12,7 @@ and surface Hevy and network errors as 502 responses.
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 import requests
@@ -19,8 +20,9 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..db_models import HevyExerciseTemplateRow, HevyWorkoutRow, UserRow
+from ..db_models import GarminDailyHealthRow, HevyExerciseTemplateRow, HevySyncStateRow, HevyWorkoutRow, UserRow
 from ..hevy_client import HevyAPIError, HevyClient
+from ..hevy_sync import backfill_workouts, sync_exercise_templates, sync_workout_events
 from .schemas_external import HevyRoutineCreate, HevyRoutineFolderCreate, HevyRoutineUpdate
 
 # Muscle groups observed in the Hevy exercise-template catalogue.
@@ -535,3 +537,122 @@ def put_body_measurement_proxy(
 ) -> dict:
     """Forward validated body-measurement fields for ``date`` to Hevy."""
     return _hevy_forward(client.put_body_measurement, date, body)
+
+
+# --- user resolution (webhook worker + catch-up scheduler) -----------------------
+
+
+def configured_hevy_user_id(db: Session) -> str | None:
+    """The deployment's single Hevy-configured user, or ``None``.
+
+    The Hevy API key is global env config (not per-user), so the Hevy mirror
+    belongs to the deployment's first registered user; ``None`` when there is
+    no user yet.
+    """
+    user = db.query(UserRow).order_by(UserRow.created_at.asc()).first()
+    return user.id if user is not None else None
+
+
+# --- manual Garmin link management ------------------------------------------------
+
+
+def _activity_ids_for_date(db: Session, user_id: str, date_key: str) -> set[str]:
+    """Garmin activity ids stored for the user on ``date_key``."""
+    rows = (
+        db.query(GarminDailyHealthRow)
+        .filter(
+            GarminDailyHealthRow.user_id == user_id,
+            GarminDailyHealthRow.date == date_key,
+        )
+        .all()
+    )
+    ids: set[str] = set()
+    for row in rows:
+        activities = (row.payload or {}).get("activities") or []
+        for activity in activities:
+            if isinstance(activity, dict) and activity.get("id"):
+                ids.add(str(activity["id"]))
+    return ids
+
+
+def link_garmin_activity(
+    db: Session, user_id: str, workout_id: str, garmin_activity_id: str
+) -> dict:
+    """Manually link a Garmin activity to the user's Hevy workout (1:1).
+
+    404 when either side does not exist (the activity must be present in the
+    workout's ``local_date`` Garmin payload); 409 when either side is already
+    linked to a different partner. Commits and returns the workout's links.
+    """
+    workout = (
+        db.query(HevyWorkoutRow)
+        .filter(HevyWorkoutRow.user_id == user_id, HevyWorkoutRow.id == workout_id)
+        .first()
+    )
+    if workout is None:
+        raise HTTPException(status_code=404, detail="Workout not found")
+    if workout.garmin_activity_ids:
+        raise HTTPException(status_code=409, detail="Workout already linked to a Garmin activity")
+    if garmin_activity_id not in _activity_ids_for_date(db, user_id, workout.local_date):
+        raise HTTPException(status_code=404, detail="Garmin activity not found")
+    others = db.query(HevyWorkoutRow).filter(HevyWorkoutRow.user_id == user_id).all()
+    for other in others:
+        if other.id != workout_id and garmin_activity_id in (other.garmin_activity_ids or []):
+            raise HTTPException(
+                status_code=409, detail="Garmin activity already linked to another workout"
+            )
+    workout.garmin_activity_ids = [garmin_activity_id]
+    db.commit()
+    return {"workout_id": workout.id, "garmin_activity_ids": list(workout.garmin_activity_ids)}
+
+
+def unlink_garmin_activity(
+    db: Session, user_id: str, workout_id: str, garmin_activity_id: str
+) -> dict:
+    """Remove ``garmin_activity_id`` from the workout's links when present."""
+    workout = (
+        db.query(HevyWorkoutRow)
+        .filter(HevyWorkoutRow.user_id == user_id, HevyWorkoutRow.id == workout_id)
+        .first()
+    )
+    if workout is None:
+        raise HTTPException(status_code=404, detail="Workout not found")
+    links = list(workout.garmin_activity_ids or [])
+    if garmin_activity_id not in links:
+        raise HTTPException(status_code=404, detail="Garmin activity not linked to this workout")
+    remaining = [link for link in links if link != garmin_activity_id]
+    workout.garmin_activity_ids = remaining
+    db.commit()
+    return {"workout_id": workout.id, "garmin_activity_ids": remaining}
+
+
+# --- bulk load (idempotent sync triggers) ------------------------------------------
+
+
+def _get_or_create_sync_state(db: Session, user_id: str) -> HevySyncStateRow:
+    state = db.query(HevySyncStateRow).filter(HevySyncStateRow.user_id == user_id).one_or_none()
+    if state is None:
+        state = HevySyncStateRow(id=str(uuid.uuid4()), user_id=user_id)
+        db.add(state)
+        db.flush()
+    return state
+
+
+def load_templates(db: Session, user_id: str, client: HevyClient) -> int:
+    """Sync the full exercise-template catalogue and stamp ``templates_synced_at``."""
+    count = sync_exercise_templates(db, client)
+    state = _get_or_create_sync_state(db, user_id)
+    state.templates_synced_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.commit()
+    return count
+
+
+def load_workouts(db: Session, user_id: str, client: HevyClient) -> int:
+    """Backfill every workout from the paginated feed."""
+    return backfill_workouts(db, user_id, client)
+
+
+def load_events(db: Session, user_id: str, client: HevyClient) -> int:
+    """Apply workout events since the last processed one."""
+    state = _get_or_create_sync_state(db, user_id)
+    return sync_workout_events(db, user_id, client, state.last_event_processed_at)

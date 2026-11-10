@@ -49,6 +49,7 @@ from ..schemas_external import (
     HevyBodyMeasurementWrite,
     HevyExerciseTemplateOut,
     HevyHabitProfile,
+    HevyLinkWrite,
     HevyMetadata,
     HevyPrEntry,
     HevyProgressionEntry,
@@ -480,3 +481,52 @@ def put_hevy_body_measurement(
     return hevy_service.put_body_measurement_proxy(
         db, user, hevy_client, date, payload.model_dump(exclude_unset=True)
     )
+
+
+@router.post("/hevy/links")
+def post_hevy_link(
+    payload: HevyLinkWrite,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    return hevy_service.link_garmin_activity(
+        db, user.id, payload.workout_id, payload.garmin_activity_id
+    )
+
+
+@router.delete("/hevy/links")
+def delete_hevy_link(
+    payload: HevyLinkWrite,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+) -> dict:
+    return hevy_service.unlink_garmin_activity(
+        db, user.id, payload.workout_id, payload.garmin_activity_id
+    )
+
+
+@router.post("/hevy/load/templates")
+def post_hevy_load_templates(
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+    hevy_client: HevyClient = Depends(require_hevy_configured),
+) -> dict:
+    return {"count": hevy_service.load_templates(db, user.id, hevy_client)}
+
+
+@router.post("/hevy/load/workouts")
+def post_hevy_load_workouts(
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+    hevy_client: HevyClient = Depends(require_hevy_configured),
+) -> dict:
+    return {"count": hevy_service.load_workouts(db, user.id, hevy_client)}
+
+
+@router.post("/hevy/load/events")
+def post_hevy_load_events(
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+    hevy_client: HevyClient = Depends(require_hevy_configured),
+) -> dict:
+    return {"count": hevy_service.load_events(db, user.id, hevy_client)}
