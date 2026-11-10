@@ -277,6 +277,26 @@ def test_sync_workout_returns_none_when_not_found(db_session) -> None:
     assert db_session.query(HevyWorkoutRow).count() == 0
 
 
+def test_sync_workout_local_date_rolls_over_at_sast_midnight(db_session) -> None:
+    user = _create_user(db_session)
+    # 22:30 UTC = 00:30 SAST on 2026-10-25: local_date must roll to the next day.
+    client = FakeHevyClient(
+        workouts_by_id={
+            "workout-late": _raw_workout(
+                "workout-late",
+                start="2026-10-24T22:30:00+00:00",
+                end="2026-10-24T23:15:00+00:00",
+                title="Late-night session",
+            )
+        }
+    )
+
+    row = sync_workout(db_session, user.id, client, "workout-late")
+
+    assert row is not None
+    assert row.local_date == "2026-10-25"
+
+
 # --- reconcile_links ----------------------------------------------------------
 
 
@@ -411,6 +431,56 @@ def test_reconcile_links_never_overwrites_existing_links(db_session) -> None:
     assert db_session.get(HevyWorkoutRow, "workout-1").garmin_activity_ids == ["already-linked"]
 
 
+def test_sync_workout_links_activity_just_after_sast_midnight(db_session) -> None:
+    user = _create_user(db_session)
+    # Workout 22:10 UTC = 00:10 SAST on 2026-10-25, so local_date rolls over.
+    # The previous day's row holds a within-window activity (23:55 is 15 minutes
+    # before 00:10), but linking is scoped to the workout's local_date only.
+    _seed_garmin_day(
+        db_session,
+        user.id,
+        "2026-10-24",
+        [
+            {
+                "id": "previous-day-activity",
+                "name": "Evening run",
+                "type": "running",
+                "startTime": "23:55",
+                "durationMin": 30,
+            }
+        ],
+    )
+    _seed_garmin_day(
+        db_session,
+        user.id,
+        "2026-10-25",
+        [
+            {
+                "id": "midnight-activity",
+                "name": "Cardio",
+                "type": "cardio",
+                "startTime": "00:05",
+                "durationMin": 62,
+            }
+        ],
+    )
+    client = FakeHevyClient(
+        workouts_by_id={
+            "workout-midnight": _raw_workout(
+                "workout-midnight",
+                start="2026-10-24T22:10:00+00:00",
+                end="2026-10-24T23:00:00+00:00",
+            )
+        }
+    )
+
+    row = sync_workout(db_session, user.id, client, "workout-midnight")
+
+    assert row is not None
+    assert row.local_date == "2026-10-25"
+    assert row.garmin_activity_ids == ["midnight-activity"]
+
+
 # --- sync_workout_events ------------------------------------------------------
 
 
@@ -520,6 +590,216 @@ def test_sync_workout_events_skips_events_at_or_before_since(db_session) -> None
     assert db_session.query(HevyWorkoutRow).count() == 1  # delete was skipped
     state = db_session.query(HevySyncStateRow).filter_by(user_id=user.id).one()
     assert state.last_event_processed_at == datetime(2026, 10, 24, 12, 0)
+
+
+def test_sync_workout_events_handles_event_without_timestamp(db_session) -> None:
+    """A ts-less event must not crash the chronological sort; it applies last."""
+    user = _create_user(db_session)
+    _seed_workout(
+        db_session,
+        user.id,
+        "workout-1",
+        start_utc=datetime(2026, 10, 24, 14, 22, tzinfo=UTC),
+        local_date="2026-10-24",
+    )
+    client = FakeHevyClient(
+        event_pages=[
+            {
+                "workout_events": [
+                    {
+                        "id": "event-ts",
+                        "type": "update",
+                        "workout_id": "workout-1",
+                        "updated_at": "2026-10-25T09:00:00Z",
+                    },
+                    {
+                        "id": "event-no-ts",
+                        "type": "delete",
+                        "workout_id": "workout-1",
+                    },
+                ],
+                "page": 1,
+                "page_count": 1,
+            }
+        ],
+        workouts_by_id={
+            "workout-1": _raw_workout(
+                "workout-1",
+                start="2026-10-24T16:22:00+00:00",
+                end="2026-10-24T17:10:00+00:00",
+            )
+        },
+    )
+
+    applied = sync_workout_events(db_session, user.id, client, since=None)
+
+    assert applied == 2
+    # The ts-less delete sorts after the timestamped update, so it wins.
+    assert db_session.query(HevyWorkoutRow).count() == 0
+    state = db_session.query(HevySyncStateRow).filter_by(user_id=user.id).one()
+    assert state.last_event_processed_at == datetime(2026, 10, 25, 9, 0)
+
+
+@pytest.mark.parametrize(
+    "delete_first_page", [False, True], ids=["update-on-page1", "delete-on-page1"]
+)
+def test_sync_workout_events_newer_update_survives_older_delete(
+    db_session, delete_first_page
+) -> None:
+    """Events replay chronologically regardless of page order: newest wins."""
+    user = _create_user(db_session)
+    _seed_workout(
+        db_session,
+        user.id,
+        "workout-1",
+        start_utc=datetime(2026, 10, 24, 14, 22, tzinfo=UTC),
+        local_date="2026-10-24",
+    )
+    update_event = {
+        "id": "event-update",
+        "type": "update",
+        "workout_id": "workout-1",
+        "updated_at": "2026-10-25T12:00:00Z",  # NEWER event
+    }
+    delete_event = {
+        "id": "event-delete",
+        "type": "delete",
+        "workout_id": "workout-1",
+        "deleted_at": "2026-10-25T10:00:00Z",  # OLDER event
+    }
+    update_page = {"workout_events": [update_event], "page": 1, "page_count": 2}
+    delete_page = {"workout_events": [delete_event], "page": 2, "page_count": 2}
+    client = FakeHevyClient(
+        event_pages=(
+            [delete_page, update_page] if delete_first_page else [update_page, delete_page]
+        ),
+        workouts_by_id={
+            "workout-1": _raw_workout(
+                "workout-1",
+                start="2026-10-24T16:22:00+00:00",
+                end="2026-10-24T17:10:00+00:00",
+                title="Renamed session",
+            )
+        },
+    )
+
+    applied = sync_workout_events(db_session, user.id, client, since=None)
+
+    assert applied == 2
+    row = db_session.get(HevyWorkoutRow, "workout-1")
+    assert row is not None  # the newer update outranks the older delete
+    assert row.title == "Renamed session"
+    state = db_session.query(HevySyncStateRow).filter_by(user_id=user.id).one()
+    assert state.last_event_processed_at == datetime(2026, 10, 25, 12, 0)
+
+
+@pytest.mark.parametrize(
+    "update_first_page", [False, True], ids=["delete-on-page1", "update-on-page1"]
+)
+def test_sync_workout_events_older_update_never_clobbers_newer_delete(
+    db_session, update_first_page
+) -> None:
+    """A newer delete must stand even when an older update arrives on a later page."""
+    user = _create_user(db_session)
+    _seed_workout(
+        db_session,
+        user.id,
+        "workout-1",
+        start_utc=datetime(2026, 10, 24, 14, 22, tzinfo=UTC),
+        local_date="2026-10-24",
+    )
+    update_event = {
+        "id": "event-update",
+        "type": "update",
+        "workout_id": "workout-1",
+        "updated_at": "2026-10-25T10:00:00Z",  # OLDER event, arrives later
+    }
+    delete_event = {
+        "id": "event-delete",
+        "type": "delete",
+        "workout_id": "workout-1",
+        "deleted_at": "2026-10-25T12:00:00Z",  # NEWER event
+    }
+    update_page = {"workout_events": [update_event], "page": 1, "page_count": 2}
+    delete_page = {"workout_events": [delete_event], "page": 2, "page_count": 2}
+    client = FakeHevyClient(
+        event_pages=(
+            [update_page, delete_page] if update_first_page else [delete_page, update_page]
+        ),
+        workouts_by_id={
+            "workout-1": _raw_workout(
+                "workout-1",
+                start="2026-10-24T16:22:00+00:00",
+                end="2026-10-24T17:10:00+00:00",
+            )
+        },
+    )
+
+    applied = sync_workout_events(db_session, user.id, client, since=None)
+
+    assert applied == 2
+    assert db_session.query(HevyWorkoutRow).count() == 0  # the delete stands
+    state = db_session.query(HevySyncStateRow).filter_by(user_id=user.id).one()
+    assert state.last_event_processed_at == datetime(2026, 10, 25, 12, 0)
+
+
+def test_sync_workout_events_update_links_garmin_activity(db_session) -> None:
+    """Workouts first discovered via the events feed get Garmin links too."""
+    user = _create_user(db_session)
+    # Workout 14:22 UTC = 16:22 SAST on 2026-10-24; activity starts 16:22 local.
+    _seed_garmin_day(
+        db_session,
+        user.id,
+        "2026-10-24",
+        [
+            {
+                "id": "24833957297",
+                "name": "Cardio",
+                "type": "cardio",
+                "startTime": "16:22",
+                "durationMin": 62,
+            }
+        ],
+    )
+    client = FakeHevyClient(
+        event_pages=[
+            {
+                "workout_events": [
+                    {
+                        "id": "event-1",
+                        "type": "update",
+                        "workout_id": "workout-1",
+                        "updated_at": "2026-10-25T09:00:00Z",
+                    }
+                ],
+                "page": 1,
+                "page_count": 1,
+            }
+        ],
+        workouts_by_id={
+            "workout-1": _raw_workout(
+                "workout-1",
+                start="2026-10-24T14:22:00+00:00",
+                end="2026-10-24T15:10:00+00:00",
+            )
+        },
+    )
+
+    applied = sync_workout_events(db_session, user.id, client, since=None)
+
+    assert applied == 1
+    row = db_session.get(HevyWorkoutRow, "workout-1")
+    assert row is not None
+    assert row.garmin_activity_ids == ["24833957297"]
+
+    # Re-applying the same event must never duplicate or overwrite the link.
+    applied_again = sync_workout_events(db_session, user.id, client, since=None)
+
+    assert applied_again == 1
+    assert db_session.query(HevyWorkoutRow).count() == 1
+    assert db_session.get(HevyWorkoutRow, "workout-1").garmin_activity_ids == [
+        "24833957297"
+    ]
 
 
 # --- backfill_workouts ---------------------------------------------------------
