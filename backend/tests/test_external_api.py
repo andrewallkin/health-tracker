@@ -823,16 +823,36 @@ def test_weight_put_keeps_notes_and_photos_and_reports_averages(client, auth_hea
 
 
 class _FakeHevyClient:
-    """Records put_body_measurement calls; raises the canned error when set."""
+    """Records get/put_body_measurement calls; raises the canned errors when set.
 
-    def __init__(self, error: Exception | None = None) -> None:
-        self.calls: list[tuple[str, dict]] = []
-        self.error = error
+    ``error`` raises on both calls; ``get_error``/``put_error`` raise on one
+    only. ``measurement`` is what GET returns (``None`` = Hevy has no
+    measurement for the date, i.e. a 404).
+    """
+
+    def __init__(
+        self,
+        error: Exception | None = None,
+        *,
+        get_error: Exception | None = None,
+        put_error: Exception | None = None,
+        measurement: dict | None = None,
+    ) -> None:
+        self.calls: list[tuple[str, tuple]] = []
+        self.get_error = error if get_error is None else get_error
+        self.put_error = error if put_error is None else put_error
+        self.measurement = measurement
+
+    def get_body_measurement(self, date: str) -> dict | None:
+        self.calls.append(("get_body_measurement", (date,)))
+        if self.get_error is not None:
+            raise self.get_error
+        return self.measurement
 
     def put_body_measurement(self, date: str, body: dict) -> dict:
-        self.calls.append((date, body))
-        if self.error is not None:
-            raise self.error
+        self.calls.append(("put_body_measurement", (date, body)))
+        if self.put_error is not None:
+            raise self.put_error
         return {}
 
 
@@ -866,16 +886,55 @@ def test_upsert_weight_dual_writes_weight_to_hevy(client, auth_headers, monkeypa
     )
 
     assert response.status_code == 200, response.text
-    # Hevy's PutBodyMeasurement weight unit is kilograms (verified against the
-    # live OpenAPI spec), so the local kg value is forwarded unchanged.
-    assert fake.calls == [("2026-09-28", {"weight_kg": 80.5})]
+    # Hevy holds no measurement for the date (GET 404s), so the merged body is
+    # weight-only. Hevy's PutBodyMeasurement weight unit is kilograms (verified
+    # against the live OpenAPI spec), so the local kg value is forwarded
+    # unchanged.
+    assert fake.calls == [
+        ("get_body_measurement", ("2026-09-28",)),
+        ("put_body_measurement", ("2026-09-28", {"weight_kg": 80.5})),
+    ]
     assert "hevy_error" not in response.json()
     check_in = client.get("/api/check-ins", headers=auth_headers, params={"date": "2026-09-28"})
     assert check_in.json()["weightKg"] == 80.5
 
 
+def test_upsert_weight_merges_existing_hevy_measurement(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient(
+        measurement={
+            "date": "2026-09-28",
+            "weight_kg": 79.0,
+            "fat_percent": 18.5,
+            "waist": 80.0,
+        }
+    )
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    # Hevy's PUT overwrites every field for the date, so the dual-write reads
+    # the existing measurement first and merges: the old fat_percent and waist
+    # survive alongside the new weight, and Hevy's `date` echo is not sent back
+    # (PutBodyMeasurement carries no date field).
+    assert fake.calls == [
+        ("get_body_measurement", ("2026-09-28",)),
+        (
+            "put_body_measurement",
+            ("2026-09-28", {"weight_kg": 80.5, "fat_percent": 18.5, "waist": 80.0}),
+        ),
+    ]
+    assert "hevy_error" not in response.json()
+
+
 def test_upsert_weight_hevy_failure_keeps_local_check_in(client, auth_headers, monkeypatch) -> None:
-    fake = _FakeHevyClient(error=HEVY_PUT_FAILURE)
+    fake = _FakeHevyClient(put_error=HEVY_PUT_FAILURE)
     _patch_hevy(client, monkeypatch, fake)
     api_key = issue_key(client, auth_headers)
     headers = external_headers(api_key)
@@ -893,8 +952,35 @@ def test_upsert_weight_hevy_failure_keeps_local_check_in(client, auth_headers, m
     assert check_in.json()["weightKg"] == 80.5
 
 
+def test_upsert_weight_hevy_get_failure_keeps_local_check_in(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient(
+        get_error=HevyAPIError(
+            'Hevy GET /v1/body_measurements/2026-09-28 failed with status 500: {"error":"boom"}',
+            status=500,
+        )
+    )
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["weightKg"] == 80.5
+    assert "hevy_error" in response.json()
+    # No PUT without the existing measurement: a weight-only PUT could wipe
+    # same-day fat/circumference data Hevy still holds.
+    assert [kind for kind, _ in fake.calls] == ["get_body_measurement"]
+    check_in = client.get("/api/check-ins", headers=auth_headers, params={"date": "2026-09-28"})
+    assert check_in.json()["weightKg"] == 80.5
+
+
 def test_upsert_weight_hevy_network_failure_keeps_local_check_in(client, auth_headers, monkeypatch) -> None:
-    fake = _FakeHevyClient(error=requests.ConnectionError("Hevy unreachable"))
+    fake = _FakeHevyClient(put_error=requests.ConnectionError("Hevy unreachable"))
     _patch_hevy(client, monkeypatch, fake)
     api_key = issue_key(client, auth_headers)
     headers = external_headers(api_key)

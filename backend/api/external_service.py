@@ -1070,13 +1070,27 @@ def upsert_weight(db: Session, user_id: str, date_key: str, weight_kg: float) ->
     db.commit()
     result = build_weight(db, user_id, date_key)
     # Best-effort dual-write to Hevy once the local check-in is committed. Hevy's
-    # PutBodyMeasurement schema (verified against the live OpenAPI spec) takes
-    # weight_kg in kilograms, so the value is forwarded unchanged. A Hevy
-    # failure must never fail the local write: it is reported via "hevy_error".
+    # PutBodyMeasurement weight unit is kilograms (verified against the live
+    # OpenAPI spec), so the value is forwarded unchanged. Hevy's PUT overwrites
+    # ALL fields for the date, so the day's existing measurement (if any) is
+    # read first and the weight is merged on top — a weight-only write must not
+    # wipe same-day fat%/circumference data. The GET response is the
+    # BodyMeasurement object itself (no envelope); its `date` echo is stripped
+    # because PutBodyMeasurement carries no date field. A Hevy failure must
+    # never fail the local write: it is reported via "hevy_error".
     client = hevy_client_from_settings(get_settings())
     if client is not None:
         try:
-            client.put_body_measurement(date_key, {"weight_kg": weight_kg})
+            existing = client.get_body_measurement(date_key) or {}
         except (HevyAPIError, requests.RequestException) as err:
+            # Without the measurement Hevy holds, a PUT would blind-overwrite
+            # every field, so report the failure instead of sending weight only.
             result["hevy_error"] = str(err)
+        else:
+            merged = {key: value for key, value in existing.items() if key != "date"}
+            merged["weight_kg"] = weight_kg
+            try:
+                client.put_body_measurement(date_key, merged)
+            except (HevyAPIError, requests.RequestException) as err:
+                result["hevy_error"] = str(err)
     return result

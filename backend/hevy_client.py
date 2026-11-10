@@ -93,6 +93,19 @@ class HevyClient:
         """Create a routine folder from a Hevy ``PostRoutineFolderRequestBody``."""
         return self._request("POST", "/v1/routine_folders", json=body)
 
+    def get_body_measurement(self, date: str) -> dict[str, Any] | None:
+        """Body measurement for ``YYYY-MM-DD``; ``None`` when Hevy reports 404.
+
+        The response is the ``BodyMeasurement`` object itself (verified against
+        the live OpenAPI spec — no envelope to unwrap).
+        """
+        try:
+            return self._request("GET", f"/v1/body_measurements/{date}")
+        except HevyAPIError as err:
+            if err.status == 404:
+                return None
+            raise
+
     def put_body_measurement(self, date: str, body: dict[str, Any]) -> dict[str, Any]:
         """Upsert body measurements for ``YYYY-MM-DD`` (all fields overwritten)."""
         return self._request("PUT", f"/v1/body_measurements/{date}", json=body)

@@ -137,6 +137,37 @@ def test_get_workout_reraises_non_404_errors():
     assert exc_info.value.status == 500
 
 
+def test_get_body_measurement_returns_body_on_success():
+    payload = {"date": "2026-11-10", "weight_kg": 80.5, "fat_percent": 18.5}
+
+    with patch(
+        "requests.Session.request",
+        return_value=_mock_response(200, payload),
+    ) as request:
+        assert HevyClient("k").get_body_measurement("2026-11-10") == payload
+
+    assert request.call_args.args[1] == f"{BASE_URL}/v1/body_measurements/2026-11-10"
+
+
+def test_get_body_measurement_returns_none_on_404():
+    response = _mock_response(404, text='{"error": "Not found"}')
+
+    with patch("requests.Session.request", return_value=response):
+        assert HevyClient("k").get_body_measurement("2026-11-10") is None
+
+
+def test_get_body_measurement_reraises_non_404_errors():
+    response = _mock_response(500, text="boom")
+
+    with (
+        patch("requests.Session.request", return_value=response),
+        pytest.raises(HevyAPIError) as exc_info,
+    ):
+        HevyClient("k").get_body_measurement("2026-11-10")
+
+    assert exc_info.value.status == 500
+
+
 def test_consecutive_requests_are_separated_by_one_second():
     client = HevyClient("k")
 
