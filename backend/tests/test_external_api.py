@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -19,6 +19,8 @@ from backend.db_models import (
     DayStatusRow,
     GarminDailyHealthRow,
     GarminMetricSnapshotRow,
+    HevyWorkoutRow,
+    UserRow,
 )
 from backend.hevy_client import HevyAPIError
 from backend.tests.conftest import register_user
@@ -1329,6 +1331,78 @@ def test_health_range_past_days_are_cache_only_without_fetch_or_cache_writes(
     finally:
         db.close()
         close_db(gen)
+
+
+def _hevy_range_set(index: int) -> dict:
+    return {
+        "index": index,
+        "type": "normal",
+        "weight_kg": 40.0,
+        "reps": 10,
+        "distance_meters": None,
+        "duration_seconds": None,
+        "rpe": None,
+        "custom_metric": None,
+        "rep_range": None,
+    }
+
+
+def test_health_range_includes_strength_for_days_missing_garmin_rows(
+    client, seeded_garmin_days
+) -> None:
+    # A day with a Hevy workout but no cached Garmin row must still surface the
+    # strength block in the range view, like /today does.
+    db, gen = db_session(client)
+    try:
+        user_id = db.query(UserRow).first().id
+        db.add(
+            HevyWorkoutRow(
+                id="w-range",
+                user_id=user_id,
+                title="Push Day",
+                start_time=datetime(2026, 8, 14, 22, 30, tzinfo=timezone.utc),
+                end_time=datetime(2026, 8, 14, 23, 15, tzinfo=timezone.utc),
+                local_date="2026-08-15",  # 2026-08-14T22:30Z == 00:30 SAST 08-15
+                garmin_activity_ids=[],
+                payload={
+                    "id": "w-range",
+                    "title": "Push Day",
+                    "routine_id": None,
+                    "description": "Hard session",
+                    "start_time": "2026-08-14T22:30:00+00:00",
+                    "end_time": "2026-08-14T23:15:00+00:00",
+                    "exercises": [
+                        {
+                            "index": 0,
+                            "title": "Bent Over Row (Barbell)",
+                            "exercise_template_id": "55E6546F",
+                            "superset_id": None,
+                            "rest_seconds": None,
+                            "notes": None,
+                            "sets": [_hevy_range_set(index) for index in range(3)],
+                        }
+                    ],
+                },
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+        close_db(gen)
+
+    resp = client.get("/api/external/health?from=2026-08-14&to=2026-08-16")
+
+    assert resp.status_code == 200, resp.text
+    days = {day["date"]: day for day in resp.json()["days"]}
+    target = days["2026-08-15"]
+    assert target["status"] == "unavailable"
+    assert target["reason"] == "missing"
+    assert target["strength"]["sessions"][0]["workout_id"] == "w-range"
+    assert target["strength"]["total_volume_kg"] == 1200.0
+    assert target["strength"]["hard_sets"] == 3
+    # Workout-less days keep the payload unchanged: no strength key at all.
+    assert "strength" not in days["2026-08-14"]
+    assert "strength" not in days["2026-08-16"]
 
 
 def test_health_range_today_is_live_fetched_and_uncached_past_days_stay_missing(

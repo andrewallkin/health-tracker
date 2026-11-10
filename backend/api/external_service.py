@@ -821,7 +821,13 @@ def _range_day_out(db: Session, user_id: str, date_str: str, day: DailyHealth | 
     if date_str > today:
         return {"date": date_str, "status": "unavailable", "reason": "future"}
     if day is None:
-        return {"date": date_str, "status": "unavailable", "reason": "missing"}
+        # No cached Garmin row, but the day may still have Hevy workouts: attach
+        # the strength block so the range view matches /today.
+        missing: dict = {"date": date_str, "status": "unavailable", "reason": "missing"}
+        strength = build_strength_block(db, user_id, date_str)
+        if strength is not None:
+            missing["strength"] = strength
+        return missing
     return {"date": day.date, **_health_block(db, user_id, date_str, day, None)}
 
 

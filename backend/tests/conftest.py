@@ -27,6 +27,10 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ.setdefault("POSTGRES_DB", "test")
 os.environ.pop("GCP_SERVICE_ACCOUNT_CREDENTIALS", None)
 os.environ.pop("GCS_IMAGES_BUCKET_NAME", None)
+# Keep a developer's exported Hevy credentials from turning test runs into
+# real HTTP calls (the same reason the GCP vars above are dropped).
+os.environ.pop("HEVY_API_KEY", None)
+os.environ.pop("HEVY_WEBHOOK_TOKEN", None)
 
 from backend.config import Settings  # noqa: E402
 
