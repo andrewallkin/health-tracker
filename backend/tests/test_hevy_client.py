@@ -52,6 +52,21 @@ def test_paginated_gets_send_page_and_pagesize_params():
     ]
 
 
+def test_page_size_is_capped_at_ten():
+    client = HevyClient("k")
+
+    with patch("requests.Session.request", return_value=_mock_response(200, {})) as request:
+        client.get_workouts(page_size=25)
+        client.get_workout_events(page_size=25)
+        client.get_exercise_templates(page_size=25)
+        client.get_routines(page_size=25)
+        client.get_routine_folders(page_size=25)
+
+    # Binding constraint: the client must never exceed Hevy's pageSize cap of
+    # 10, whatever callers pass in.
+    assert [c.kwargs["params"]["pageSize"] for c in request.call_args_list] == [10] * 5
+
+
 def test_write_methods_use_hevy_paths_and_methods():
     client = HevyClient("k")
     routine_body = {"routine": {"title": "Push Day"}}

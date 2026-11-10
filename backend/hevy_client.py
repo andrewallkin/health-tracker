@@ -16,8 +16,14 @@ from backend.config import Settings
 
 BASE_URL = "https://api.hevyapp.com"
 MIN_REQUEST_INTERVAL_SECONDS = 1.0
+PAGE_SIZE_CAP = 10
 _TIMEOUT_SECONDS = 30
 _SNIPPET_CHARS = 200
+
+
+def _page_params(page: int, page_size: int) -> dict[str, int]:
+    """Build pagination params, clamped to Hevy's pageSize cap of 10."""
+    return {"page": page, "pageSize": min(page_size, PAGE_SIZE_CAP)}
 
 
 class HevyAPIError(RuntimeError):
@@ -38,9 +44,7 @@ class HevyClient:
 
     def get_workouts(self, page: int = 1, page_size: int = 10) -> dict[str, Any]:
         """Raw paginated workout list (``page``/``page_count``/``workouts``)."""
-        return self._request(
-            "GET", "/v1/workouts", params={"page": page, "pageSize": page_size}
-        )
+        return self._request("GET", "/v1/workouts", params=_page_params(page, page_size))
 
     def get_workout(self, workout_id: str) -> dict[str, Any] | None:
         """Full single workout; ``None`` when Hevy reports 404."""
@@ -54,7 +58,7 @@ class HevyClient:
     def get_workout_events(self, page: int = 1, page_size: int = 10) -> dict[str, Any]:
         """Raw paginated workout update/delete events feed."""
         return self._request(
-            "GET", "/v1/workouts/events", params={"page": page, "pageSize": page_size}
+            "GET", "/v1/workouts/events", params=_page_params(page, page_size)
         )
 
     def get_exercise_templates(self, page: int = 1, page_size: int = 10) -> dict[str, Any]:
@@ -62,19 +66,19 @@ class HevyClient:
         return self._request(
             "GET",
             "/v1/exercise_templates",
-            params={"page": page, "pageSize": page_size},
+            params=_page_params(page, page_size),
         )
 
     def get_routines(self, page: int = 1, page_size: int = 10) -> dict[str, Any]:
         """Raw paginated routine list."""
         return self._request(
-            "GET", "/v1/routines", params={"page": page, "pageSize": page_size}
+            "GET", "/v1/routines", params=_page_params(page, page_size)
         )
 
     def get_routine_folders(self, page: int = 1, page_size: int = 10) -> dict[str, Any]:
         """Raw paginated routine folder list."""
         return self._request(
-            "GET", "/v1/routine_folders", params={"page": page, "pageSize": page_size}
+            "GET", "/v1/routine_folders", params=_page_params(page, page_size)
         )
 
     def create_routine(self, body: dict[str, Any]) -> dict[str, Any]:
