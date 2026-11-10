@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time as time_module
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,8 @@ from ..hevy_client import hevy_client_from_settings
 from ..hevy_sync import sync_workout_events
 from .external_service import create_health_snapshot
 from .hevy_service import configured_hevy_user_id
+
+logger = logging.getLogger(__name__)
 
 TZ = ZoneInfo("Africa/Johannesburg")
 CAPTURE_WEEKDAY = 0        # Monday
@@ -135,7 +138,7 @@ def _hevy_run_loop() -> None:
         try:
             hevy_catchup_cycle()
         except Exception:  # noqa: BLE001 — scheduler must never crash the process
-            pass
+            logger.exception("Hevy catch-up cycle failed")
         time_module.sleep(_HEVY_CATCHUP_SECONDS)
 
 

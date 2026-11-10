@@ -9,6 +9,8 @@ function (``run_webhook_sync``) so tests can monkeypatch it and run it inline.
 
 from __future__ import annotations
 
+import hmac
+import logging
 import threading
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -20,19 +22,24 @@ from ..hevy_client import hevy_client_from_settings
 from ..hevy_sync import sync_workout
 from . import hevy_service
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/hevy", tags=["hevy"])
 
 
 def _authorized(header_value: str | None, token: str) -> bool:
     """Accept ``Bearer <token>`` or the raw token (Hevy may omit the prefix)."""
     candidate = header_value.strip() if header_value else ""
-    return candidate == f"Bearer {token}" or candidate == token
+    return hmac.compare_digest(candidate, f"Bearer {token}") or hmac.compare_digest(
+        candidate, token
+    )
 
 
 def run_webhook_sync(workout_id: str) -> None:
     """Background worker: fetch the workout from Hevy, upsert it, link Garmin.
 
-    Skips silently when Hevy is unconfigured or no user is resolvable.
+    Skips silently when Hevy is unconfigured or no user is resolvable. A sync
+    failure is logged, never raised — the webhook has already answered 200.
     """
     client = hevy_client_from_settings(get_settings())
     if client is None:
@@ -42,7 +49,10 @@ def run_webhook_sync(workout_id: str) -> None:
         user_id = hevy_service.configured_hevy_user_id(db)
         if user_id is None:
             return
-        sync_workout(db, user_id, client, workout_id)
+        try:
+            sync_workout(db, user_id, client, workout_id)
+        except Exception:  # noqa: BLE001 — the webhook already answered 200
+            logger.exception("Hevy webhook sync failed for workout %s", workout_id)
     finally:
         db.close()
 
