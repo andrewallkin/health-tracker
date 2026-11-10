@@ -94,7 +94,9 @@ class FakeHevyClient:
     ``method_errors``/``method_responses`` override ``error``/``response`` per
     client method — used to script multi-call fallbacks (e.g. a body-measurement
     PUT 404 followed by a POST create). A ``method_errors`` value that is a
-    list feeds one error per call in order (``None`` entries succeed).
+    list feeds one error per call in order (``None`` entries succeed); a
+    ``method_responses`` list likewise feeds one response per call in order
+    (used to script paginated fetches such as ``get_routines``).
     """
 
     def __init__(
@@ -109,6 +111,9 @@ class FakeHevyClient:
         self.error = error
         self.method_errors = method_errors or {}
         self.method_responses = method_responses or {}
+
+    def get_routines(self, page: int = 1, page_size: int = 10) -> dict:
+        return self._record("get_routines", (page, page_size))
 
     def create_routine(self, body: dict) -> dict:
         return self._record("create_routine", body)
@@ -138,7 +143,10 @@ class FakeHevyClient:
         if self.error is not None:
             raise self.error
         if method in self.method_responses:
-            return self.method_responses[method]
+            scripted = self.method_responses[method]
+            if isinstance(scripted, list):
+                scripted = scripted.pop(0) if scripted else {}
+            return scripted
         return self.response
 
 
@@ -514,3 +522,74 @@ def test_body_measurement_unknown_fields_are_rejected_not_dropped(client: TestCl
     assert extra_field.status_code == 422
 
     assert fake_hevy.calls == []
+
+
+# --- routines list proxy (live paginated read) ----------------------------------
+
+
+ROUTINE_LIST_PAGE_ONE = {
+    "page": 1,
+    "page_count": 2,
+    "routines": [
+        {"id": "routine-uuid-1", "title": "Push Day", "folder_id": 12345, "exercises": []},
+        {"id": "routine-uuid-2", "title": "Pull Day", "folder_id": 12345, "exercises": []},
+    ],
+}
+ROUTINE_LIST_PAGE_TWO = {
+    "page": 2,
+    "page_count": 2,
+    "routines": [
+        {"id": "routine-uuid-3", "title": "Legs", "folder_id": None, "exercises": []},
+    ],
+}
+
+
+def test_get_hevy_routines_returns_all_pages_in_order(client: TestClient, fake_hevy: FakeHevyClient) -> None:
+    """GET /hevy/routines is a live read that follows Hevy's pagination and
+    returns every routine entry as-is, in page order."""
+    fake_hevy.method_responses = {
+        "get_routines": [ROUTINE_LIST_PAGE_ONE, ROUTINE_LIST_PAGE_TWO]
+    }
+    auth = _auth_headers(client)
+
+    response = client.get("/api/external/hevy/routines", headers=auth)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == [
+        *ROUTINE_LIST_PAGE_ONE["routines"],
+        *ROUTINE_LIST_PAGE_TWO["routines"],
+    ]
+    assert fake_hevy.calls == [("get_routines", (1, 10)), ("get_routines", (2, 10))]
+
+
+def test_get_hevy_routines_returns_503_without_configured_api_key(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(external_routes, "get_settings", lambda: Settings(hevy_api_key=""))
+    auth = _auth_headers(client)
+
+    response = client.get("/api/external/hevy/routines", headers=auth)
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Hevy not configured"}
+
+
+def test_get_hevy_routines_requires_external_api_key(client: TestClient) -> None:
+    assert client.get("/api/external/hevy/routines").status_code == 401
+
+
+@pytest.mark.parametrize(
+    "error",
+    [HEVY_FAILURE, requests.ConnectionError("Hevy unreachable")],
+    ids=["hevy_api_error", "network_error"],
+)
+def test_get_hevy_routines_surfaces_hevy_and_network_errors_as_502(
+    client: TestClient, fake_hevy: FakeHevyClient, error: Exception
+) -> None:
+    fake_hevy.error = error
+    auth = _auth_headers(client)
+
+    response = client.get("/api/external/hevy/routines", headers=auth)
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": str(error)}

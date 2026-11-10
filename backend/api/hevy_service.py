@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from ..db_models import GarminDailyHealthRow, HevyExerciseTemplateRow, HevySyncStateRow, HevyWorkoutRow, UserRow
 from ..hevy_client import HevyAPIError, HevyClient
-from ..hevy_sync import backfill_workouts, sync_exercise_templates, sync_workout_events
+from ..hevy_sync import PAGE_SIZE, _paginate, backfill_workouts, sync_exercise_templates, sync_workout_events
 from .schemas_external import HevyRoutineCreate, HevyRoutineFolderCreate, HevyRoutineUpdate
 
 # Muscle groups observed in the Hevy exercise-template catalogue.
@@ -531,6 +531,26 @@ def _prune_null_rep_ranges(node: object) -> object:
     if isinstance(node, list):
         return [_prune_null_rep_ranges(item) for item in node]
     return node
+
+
+def list_routines_proxy(db: Session, user: UserRow, client: HevyClient) -> list[dict]:
+    """Return the configured Hevy account's routines, following pagination.
+
+    Unlike the mirror-backed reads, this calls Hevy live (page by page,
+    Hevy's 10-per-page cap) and returns the ``routines`` entries as-is.
+    Agents should list routines before creating or updating one: Hevy does
+    not enforce title uniqueness, so updating an existing routine is usually
+    preferable to creating a near-duplicate (intentional duplicates stay
+    allowed).
+    """
+    return [
+        routine
+        for page in _paginate(
+            lambda page_number: _hevy_forward(client.get_routines, page_number, PAGE_SIZE),
+            "routines",
+        )
+        for routine in page
+    ]
 
 
 def create_routine_proxy(

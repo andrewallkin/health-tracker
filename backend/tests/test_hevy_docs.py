@@ -22,6 +22,7 @@ HEVY_PATHS = [
     "GET /api/external/hevy/exercises/{templateId}/progression",
     "GET /api/external/hevy/prs",
     "GET /api/external/hevy/habits",
+    "GET /api/external/hevy/routines",
     "POST /api/external/hevy/routines",
     "PUT /api/external/hevy/routines/{routineId}",
     "POST /api/external/hevy/routine-folders",

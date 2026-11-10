@@ -129,6 +129,7 @@ All date params are `YYYY-MM-DD`. They compare against `local_date`, the SAST ca
 | `GET /api/external/hevy/exercises/{templateId}/progression?from=&to=` | Per-session stats for one exercise. |
 | `GET /api/external/hevy/prs` | Personal records, one per exercise ever done. |
 | `GET /api/external/hevy/habits?from=&to=` | Exercise and equipment frequency. |
+| `GET /api/external/hevy/routines` | Live (calls Hevy, not the mirror): the account's routines, paginated — list them before creating or updating one. |
 | `POST /api/external/hevy/routines` | Create a routine in Hevy. |
 | `PUT /api/external/hevy/routines/{routineId}` | Overwrite a routine in Hevy. |
 | `POST /api/external/hevy/routine-folders` | Create a routine folder in Hevy. |
@@ -164,6 +165,8 @@ Both include every logged set, warmups included.
 ### Routines and folders
 
 The write bodies mirror Hevy's own request shapes. Unknown fields are rejected with 422 — a typo cannot silently drop data, because Hevy's PUTs overwrite. A server without `HEVY_API_KEY` configured is 503; Hevy errors and network failures surface as 502.
+
+`GET /api/external/hevy/routines` is the one Hevy read that is not mirror-backed: it calls Hevy directly, page by page (10 routines per page, one request per second), and returns Hevy's routine entries as-is. List routines before creating or updating one — Hevy does not enforce title uniqueness, so duplicates are possible: prefer updating an existing routine (PUT below) over creating a near-duplicate. Intentional duplicates are allowed.
 
 Routine create (POST `/api/external/hevy/routines`) and update (PUT `/api/external/hevy/routines/{routineId}`) take the same body:
 

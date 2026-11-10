@@ -438,6 +438,15 @@ def require_hevy_configured() -> HevyClient:
     return client
 
 
+@router.get("/hevy/routines")
+def get_hevy_routines(
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+    hevy_client: HevyClient = Depends(require_hevy_configured),
+) -> list[dict]:
+    return hevy_service.list_routines_proxy(db, user, hevy_client)
+
+
 @router.post("/hevy/routines", status_code=201)
 def post_hevy_routine(
     payload: HevyRoutineCreate,
