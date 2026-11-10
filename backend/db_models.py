@@ -291,3 +291,55 @@ class GarminMetricSnapshotRow(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "snapshot_date", name="uq_garmin_metric_snapshots_user_date"),
     )
+
+
+class HevyExerciseTemplateRow(Base):
+    __tablename__ = "hevy_exercise_templates"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    type: Mapped[str] = mapped_column(String(32), nullable=False)
+    primary_muscle_group: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    secondary_muscle_groups: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    equipment: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    is_custom: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class HevyWorkoutRow(Base):
+    __tablename__ = "hevy_workouts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    routine_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    local_date: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    garmin_activity_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (UniqueConstraint("user_id", "id", name="uq_hevy_workouts_user_id"),)
+
+
+class HevySyncStateRow(Base):
+    __tablename__ = "hevy_sync_state"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+    last_event_processed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    templates_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
