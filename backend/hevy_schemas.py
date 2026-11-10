@@ -67,6 +67,14 @@ class HevyWorkout(BaseModel):
         """Parse Hevy timestamps in either ``+00:00`` or trailing-``Z`` form."""
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
+    @field_validator("description", mode="before")
+    @classmethod
+    def _blank_description(cls, value: object) -> object:
+        """Hevy sends ``""`` when a workout has no description; the API contract is null."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("start_time", "end_time", "updated_at", mode="before")
     @classmethod
     def _parse_timestamp(cls, value: object) -> object:

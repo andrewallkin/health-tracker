@@ -133,6 +133,7 @@ All date params are `YYYY-MM-DD`. They compare against `local_date`, the SAST ca
 | `POST /api/external/hevy/routines` | Create a routine in Hevy. |
 | `PUT /api/external/hevy/routines/{routineId}` | Overwrite a routine in Hevy. |
 | `POST /api/external/hevy/routine-folders` | Create a routine folder in Hevy. |
+| `GET /api/external/hevy/body-measurements/{date}` | That day's Hevy body measurement, or 404 when Hevy has none. |
 | `PUT /api/external/hevy/body-measurements/{date}` | Upsert that day's Hevy body measurements (creates the day's entry on first write). |
 | `POST /api/external/hevy/links` | Link a Garmin activity to a Hevy workout. |
 | `DELETE /api/external/hevy/links` | Remove that link. |
@@ -144,7 +145,7 @@ All date params are `YYYY-MM-DD`. They compare against `local_date`, the SAST ca
 
 Each item of `GET /api/external/hevy/workouts` carries `id`, `title`, `start_time`, `end_time` (ISO timestamps), `local_date` (`YYYY-MM-DD`), `routine_id` (`null` when not started from a routine), `garmin_activity_ids` (list), `exercise_count`, and `set_count`. Optional `from` and `to` bound `local_date` inclusively; `limit` is 1 to 200, default 50, anything else 400.
 
-`GET /api/external/hevy/workouts/{workoutId}` adds `description` (`null` when none) and `exercises`. Each exercise carries `index`, `title`, `exercise_template_id`, `superset_id`, `rest_seconds`, `notes`, and `sets`. Each set carries `index`, `type` (`warmup`, `normal`, `failure`, or `dropset`), `weight_kg`, `reps`, `distance_meters`, `duration_seconds`, `rpe`, `custom_metric`, and `rep_range` (`{"start", "end"}` — routine sets only). Fields Hevy did not report are `null`. Unknown ids are 404.
+`GET /api/external/hevy/workouts/{workoutId}` adds `description` (`null` when none, including when Hevy sends `""`) and `exercises`. Each exercise carries `index`, `title`, `exercise_template_id`, `superset_id`, `rest_seconds`, `notes`, and `sets`. Each set carries `index`, `type` (`warmup`, `normal`, `failure`, or `dropset`), `weight_kg`, `reps`, `distance_meters`, `duration_seconds`, `rpe`, `custom_metric`, and `rep_range` (`{"start", "end"}` — routine sets only). Fields Hevy did not report are `null`. Unknown ids are 404.
 
 ### Exercise catalogue
 
@@ -204,11 +205,15 @@ Only `title` is required; omit what does not apply. `folder_id` is a numeric fol
 
 POST returns 201 with Hevy's routine response. PUT is a FULL overwrite: Hevy replaces the whole routine, so every exercise you omit is deleted — send the complete routine every time.
 
+Hevy's routine response has no top-level `notes` field — notes exist on exercises only. A `notes` string on the routine is accepted and forwarded, and Hevy does not return it on create, update, or list. Exercise `notes` do come back.
+
 ### Body measurements
 
 PUT `/api/external/hevy/body-measurements/{date}` (`date` is `YYYY-MM-DD`; non-dates are 400) forwards any of `weight_kg`, `lean_mass_kg`, `fat_percent`, `neck_cm`, `shoulder_cm`, `chest_cm`, `left_bicep_cm`, `right_bicep_cm`, `left_forearm_cm`, `right_forearm_cm`, `abdomen`, `waist`, `hips`, `left_thigh`, `right_thigh`, `left_calf`, `right_calf` to Hevy. This proxy does not merge: Hevy overwrites the whole day's measurement with the body you send, so fields you omit are cleared. Send the full field set you want kept.
 
-The proxy upserts: Hevy's `PUT /v1/body_measurements/{date}` is update-only — it answers 404 when the date has no measurement yet — so the first write for a date falls back to `POST /v1/body_measurements` with the same fields plus `date` (Hevy's POST schema carries the date inside its body) and returns 201 with `{}` (Hevy's create response body is empty); later writes PUT and return 200 with Hevy's response. If another writer creates the day's entry between those two calls (the create answers 409), the proxy re-fetches the measurement, merges your fields on top, and retries the PUT. Other Hevy errors and network failures surface as 502.
+`GET /api/external/hevy/body-measurements/{date}` returns Hevy's measurement for that date (the same fields as the write body, plus `date`), or 404 when Hevy has none. Non-dates are 400. Use it to confirm a write: Hevy's create and update responses do not echo the saved values.
+
+The proxy upserts by reading first. Hevy's live `PUT /v1/body_measurements/{date}` can answer 200 with `{}` even for a date that did not exist yet, so a successful PUT is not proof of an update. When GET finds no measurement, the proxy creates one with `POST /v1/body_measurements` (Hevy's POST schema carries `date` inside the body) and this endpoint returns 201 with `{}`. When GET finds one, the proxy PUTs and returns 200 with Hevy's response. If another writer creates the day's entry between the GET and the POST (the create answers 409), the proxy re-fetches the measurement, merges your fields on top, and retries the PUT. Other Hevy errors and network failures surface as 502.
 
 The `PUT /api/external/weight` endpoint above also dual-writes `weight_kg` to Hevy automatically when the server has `HEVY_API_KEY` configured, with the same upsert semantics: it creates the day's measurement on first write and updates it after. Unlike this proxy, the dual-write merges: it reads the day's existing Hevy measurement first and updates only `weight_kg`, so fat and circumference measurements for that day survive. A Hevy failure there never fails the local write; it is reported in the response as `hevy_error`.
 
@@ -218,7 +223,7 @@ The `PUT /api/external/weight` endpoint above also dual-writes `weight_kg` to He
 
 POST is 404 for an unknown workout, 404 when the activity is not in the workout's `local_date` Garmin data (the activity must be on that day's health row), and 409 when either side is already linked to a different partner. DELETE is 404 when the workout is unknown or the link is absent, and returns the remaining links.
 
-The server also links automatically: a sync links each workout to the closest Garmin activity starting within 20 minutes of it on the same local day. Manual links here are never overwritten by re-syncs.
+The server also links automatically: a sync links each workout to the closest Garmin activity starting within 20 minutes of it on the same local day. The comparison uses the activity's UTC start (`startTimeUtc`, taken from Garmin's `startTimeGMT`) when the health snapshot has it, so a workout logged outside South Africa still matches. Snapshots that only have a local `startTime` are still read as SAST — that misses a watch set to another zone (Vietnam is five hours from SAST). Refetch those days with `scripts/backfill_garmin_health.py` (it refetches complete days whose activities lack `startTimeUtc`) and then `POST /api/external/hevy/load/workouts` to link them. Manual links are never overwritten by re-syncs.
 
 ### Bulk load
 
@@ -249,7 +254,7 @@ The server also links automatically: a sync links each workout to the closest Ga
 }
 ```
 
-Sessions are ordered by start time. `total_volume_kg` sums `weight_kg × reps` over non-warmup sets (cardio sets contribute 0). `hard_sets` counts non-warmup sets with `rpe >= 8`, or `type` `failure`, or a `normal` set without `rpe` at that exercise's top non-warmup weight (ties all count). Warmup sets never count.
+Sessions are ordered by start time. `total_volume_kg` sums `weight_kg × reps` over non-warmup sets (cardio sets contribute 0). `hard_sets` counts non-warmup sets with `rpe >= 8`, or `type` `failure`, or a `normal` set without `rpe` at that exercise's top non-warmup weight (ties all count). Warmup sets never count. A straight-set exercise with no RPE therefore counts every work set at that weight, so `hard_sets` can equal the work-set count. Log RPE or mark failure sets when the count should mean effort.
 
 ### Webhook
 

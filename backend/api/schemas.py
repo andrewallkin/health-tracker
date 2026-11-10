@@ -272,6 +272,7 @@ class HealthActivity(BaseModel):
     name: str
     type: ActivityType
     startTime: str
+    startTimeUtc: str | None = None
     durationMin: int
     calories: int
     avgHr: int

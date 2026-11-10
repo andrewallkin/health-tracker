@@ -26,6 +26,7 @@ HEVY_PATHS = [
     "POST /api/external/hevy/routines",
     "PUT /api/external/hevy/routines/{routineId}",
     "POST /api/external/hevy/routine-folders",
+    "GET /api/external/hevy/body-measurements/{date}",
     "PUT /api/external/hevy/body-measurements/{date}",
     "POST /api/external/hevy/links",
     "DELETE /api/external/hevy/links",

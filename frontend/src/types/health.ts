@@ -14,6 +14,7 @@ export interface HealthActivity {
   name: string;
   type: ActivityType;
   startTime: string;
+  startTimeUtc?: string | null;
   durationMin: number;
   calories: number;
   avgHr: number;
