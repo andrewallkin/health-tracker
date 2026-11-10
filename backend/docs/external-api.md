@@ -197,6 +197,8 @@ Routine create (POST `/api/external/hevy/routines`) and update (PUT `/api/extern
 
 Only `title` is required; omit what does not apply. `folder_id` is a numeric folder id, not a UUID — create a folder first (`POST /api/external/hevy/routine-folders`, body `{"routine_folder": {"title": "Coach Programs"}}`, returns 201 with Hevy's response) and use the integer id from it. `type` is one of the `set_types` from metadata. `rep_range` (`{start, end}`) belongs on routine sets. Cardio exercises use `distance_meters` or `duration_seconds` instead of `weight_kg` × `reps`.
 
+`rep_range` is special: Hevy rejects an explicit `"rep_range": null` on routine writes with 400, so the proxy automatically omits (not nulls) any `rep_range` you leave out — omitting it is always safe. Other fields sent as `null` (`notes`, `weight_kg`, `distance_meters`, …) are forwarded as `null` unchanged.
+
 POST returns 201 with Hevy's routine response. PUT is a FULL overwrite: Hevy replaces the whole routine, so every exercise you omit is deleted — send the complete routine every time.
 
 ### Body measurements

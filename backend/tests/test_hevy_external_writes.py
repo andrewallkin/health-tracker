@@ -149,6 +149,70 @@ def test_hevy_writes_forward_validated_bodies_and_return_hevy_response(
     assert fake_hevy.calls == [expected_call]
 
 
+# --- unset rep_range is pruned; null scalars survive ----------------------------
+
+
+ROUTINE_WITHOUT_REP_RANGE = {
+    "routine": {
+        "title": "Pull Day",
+        "folder_id": None,
+        "notes": None,
+        "exercises": [
+            {
+                "exercise_template_id": "55E6546F",
+                "superset_id": None,
+                "rest_seconds": None,
+                "notes": None,
+                "sets": [
+                    {
+                        "type": "normal",
+                        "weight_kg": 60.0,
+                        "reps": 8,
+                        "distance_meters": None,
+                        "duration_seconds": None,
+                    }
+                ],
+            }
+        ],
+    }
+}
+
+
+def test_routine_writes_omit_unset_rep_range_but_keep_null_scalars(
+    client: TestClient, fake_hevy: FakeHevyClient
+) -> None:
+    """Hevy's PUT /v1/routines/{id} rejects ``"rep_range": null`` with 400
+    ("Expected object, received null"), so the proxy prunes unset rep_range
+    objects at every nesting level. Ordinary null scalars (notes,
+    distance_meters, …) are semantically meaningful and stay forwarded as
+    null."""
+    auth = _auth_headers(client)
+
+    created = client.post(
+        "/api/external/hevy/routines", json=ROUTINE_WITHOUT_REP_RANGE, headers=auth
+    )
+    updated = client.put(
+        "/api/external/hevy/routines/routine-uuid",
+        json=ROUTINE_WITHOUT_REP_RANGE,
+        headers=auth,
+    )
+
+    assert created.status_code == 201, created.text
+    assert updated.status_code == 200, updated.text
+    assert [method for method, _ in fake_hevy.calls] == ["create_routine", "update_routine"]
+    for method, args in fake_hevy.calls:
+        forwarded = args if method == "create_routine" else args[1]
+        routine = forwarded["routine"]
+        assert routine["notes"] is None
+        exercise = routine["exercises"][0]
+        assert exercise["notes"] is None
+        assert len(exercise["sets"]) == 1
+        forwarded_set = exercise["sets"][0]
+        assert "rep_range" not in forwarded_set
+        assert forwarded_set["distance_meters"] is None
+        assert forwarded_set["duration_seconds"] is None
+
+
 # --- Hevy failures map to 502 with Hevy's message ------------------------------
 
 

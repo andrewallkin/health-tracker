@@ -6,8 +6,10 @@ uses the row columns (``start_time``, ``local_date``); exercise and set
 detail comes from the normalized JSON payload stored by the sync layer.
 Progression and PR math include every logged set (warmups included).
 
-Write proxies forward validated agent payloads to the Hevy API unchanged
-and surface Hevy and network errors as 502 responses.
+Write proxies forward validated agent payloads to the Hevy API (routine
+bodies only lose ``rep_range`` keys left unset — Hevy rejects an explicit
+``"rep_range": null`` on PUT) and surface Hevy and network errors as 502
+responses.
 """
 
 from __future__ import annotations
@@ -509,11 +511,31 @@ def _hevy_forward(call, *args: object) -> dict:
         raise HTTPException(status_code=502, detail=str(err)) from err
 
 
+def _prune_null_rep_ranges(node: object) -> object:
+    """Drop ``"rep_range"`` keys whose value is ``None`` at every nesting level.
+
+    Hevy's ``PUT /v1/routines/{id}`` rejects an explicit ``"rep_range": null``
+    with 400 ``Expected object, received null``. Every field of Hevy's routine
+    PUT/POST schemas is optional, so omitting the key is safe everywhere.
+    ``None`` scalars (``notes``, ``weight_kg``, …) are semantically meaningful
+    and are forwarded unchanged.
+    """
+    if isinstance(node, dict):
+        return {
+            key: _prune_null_rep_ranges(value)
+            for key, value in node.items()
+            if not (key == "rep_range" and value is None)
+        }
+    if isinstance(node, list):
+        return [_prune_null_rep_ranges(item) for item in node]
+    return node
+
+
 def create_routine_proxy(
     db: Session, user: UserRow, client: HevyClient, body: HevyRoutineCreate
 ) -> dict:
     """Forward a validated ``PostRoutinesRequestBody`` to Hevy and return its response."""
-    return _hevy_forward(client.create_routine, body.model_dump())
+    return _hevy_forward(client.create_routine, _prune_null_rep_ranges(body.model_dump()))
 
 
 def update_routine_proxy(
@@ -524,7 +546,9 @@ def update_routine_proxy(
     body: HevyRoutineUpdate,
 ) -> dict:
     """Forward a validated routine overwrite for ``routine_id`` to Hevy."""
-    return _hevy_forward(client.update_routine, routine_id, body.model_dump())
+    return _hevy_forward(
+        client.update_routine, routine_id, _prune_null_rep_ranges(body.model_dump())
+    )
 
 
 def create_folder_proxy(
