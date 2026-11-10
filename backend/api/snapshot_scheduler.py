@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time as time_module
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from ..config import get_settings
 from ..database import SessionLocal
-from ..db_models import AppSettingsRow, GarminMetricSnapshotRow
+from ..db_models import AppSettingsRow, GarminMetricSnapshotRow, HevySyncStateRow
+from ..hevy_client import hevy_client_from_settings
+from ..hevy_sync import sync_workout_events
 from .external_service import create_health_snapshot
+from .hevy_service import configured_hevy_user_id
+
+logger = logging.getLogger(__name__)
 
 TZ = ZoneInfo("Africa/Johannesburg")
 CAPTURE_WEEKDAY = 0        # Monday
@@ -15,6 +22,8 @@ CAPTURE_HOUR = 7
 _BACKOFF_SECONDS = 4 * 3600
 _MAX_SLEEP_SECONDS = 3600
 _STARTED = threading.Event()
+_HEVY_CATCHUP_SECONDS = 3600
+_HEVY_STARTED = threading.Event()
 
 
 def _aware_utc(value: datetime) -> datetime:
@@ -98,4 +107,44 @@ def start_snapshot_scheduler() -> None:
         return
     _STARTED.set()
     thread = threading.Thread(target=_run_loop, name="garmin-snapshot-scheduler", daemon=True)
+    thread.start()
+
+
+def hevy_catchup_cycle() -> int:
+    """One Hevy catch-up pass: apply workout events since the last processed.
+
+    Returns the number of events applied; 0 when Hevy is unconfigured or no
+    user is resolvable (skipped silently, like the webhook worker).
+    """
+    client = hevy_client_from_settings(get_settings())
+    if client is None:
+        return 0
+    db = SessionLocal()
+    try:
+        user_id = configured_hevy_user_id(db)
+        if user_id is None:
+            return 0
+        state = (
+            db.query(HevySyncStateRow).filter(HevySyncStateRow.user_id == user_id).one_or_none()
+        )
+        since = state.last_event_processed_at if state else None
+        return sync_workout_events(db, user_id, client, since)
+    finally:
+        db.close()
+
+
+def _hevy_run_loop() -> None:
+    while True:
+        try:
+            hevy_catchup_cycle()
+        except Exception:  # noqa: BLE001 — scheduler must never crash the process
+            logger.exception("Hevy catch-up cycle failed")
+        time_module.sleep(_HEVY_CATCHUP_SECONDS)
+
+
+def start_hevy_catchup_scheduler() -> None:
+    if _HEVY_STARTED.is_set():
+        return
+    _HEVY_STARTED.set()
+    thread = threading.Thread(target=_hevy_run_loop, name="hevy-catchup-scheduler", daemon=True)
     thread.start()

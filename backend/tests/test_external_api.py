@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+import requests
 from fastapi import HTTPException
 
 from backend.api import external_service
 from backend.api.external_time import today_key
 from backend.api.routes import external
+from backend.config import Settings
 from backend.database import get_db
 from backend.db_models import (
     CheckInPhotoRow,
@@ -17,7 +19,10 @@ from backend.db_models import (
     DayStatusRow,
     GarminDailyHealthRow,
     GarminMetricSnapshotRow,
+    HevyWorkoutRow,
+    UserRow,
 )
+from backend.hevy_client import HevyAPIError
 from backend.tests.conftest import register_user
 from backend.tests.test_health_api import connect_garmin, health_payload
 
@@ -817,6 +822,320 @@ def test_weight_put_keeps_notes_and_photos_and_reports_averages(client, auth_hea
     assert future.status_code == 400
 
 
+class _FakeHevyClient:
+    """Records get/put/create_body_measurement calls; raises the canned errors when set.
+
+    ``error`` raises on every call; ``get_error``/``put_error``/``create_error``
+    raise on one only. A canned error given as a list feeds one error per call
+    in order (``None`` entries succeed) — e.g. a PUT 404 then a successful
+    retry PUT after the create-409 race recovery. ``measurement`` is what GET
+    returns (``None`` = Hevy has no measurement for the date, i.e. a 404); a
+    list feeds GET responses in order for the same multi-step scenarios.
+    """
+
+    def __init__(
+        self,
+        error: Exception | None = None,
+        *,
+        get_error: Exception | list | None = None,
+        put_error: Exception | list | None = None,
+        create_error: Exception | list | None = None,
+        measurement: dict | list | None = None,
+    ) -> None:
+        self.calls: list[tuple[str, tuple]] = []
+        self.get_error = error if get_error is None else get_error
+        self.put_error = error if put_error is None else put_error
+        self.create_error = error if create_error is None else create_error
+        self.measurement = measurement
+
+    @staticmethod
+    def _next_error(error: Exception | list | None) -> Exception | None:
+        """Consume one entry when the canned error is a FIFO list of per-call errors."""
+        if isinstance(error, list):
+            return error.pop(0) if error else None
+        return error
+
+    def get_body_measurement(self, date: str) -> dict | None:
+        self.calls.append(("get_body_measurement", (date,)))
+        error = self._next_error(self.get_error)
+        if error is not None:
+            raise error
+        if isinstance(self.measurement, list):
+            return self.measurement.pop(0) if self.measurement else None
+        return self.measurement
+
+    def put_body_measurement(self, date: str, body: dict) -> dict:
+        self.calls.append(("put_body_measurement", (date, body)))
+        error = self._next_error(self.put_error)
+        if error is not None:
+            raise error
+        return {}
+
+    def create_body_measurement(self, body: dict) -> dict:
+        self.calls.append(("create_body_measurement", (body,)))
+        error = self._next_error(self.create_error)
+        if error is not None:
+            raise error
+        return {}
+
+
+HEVY_PUT_FAILURE = HevyAPIError(
+    'Hevy PUT /v1/body_measurements/2026-09-28 failed with status 500: {"error":"boom"}',
+    status=500,
+)
+
+
+def _patch_hevy(client, monkeypatch, fake: _FakeHevyClient, api_key: str = "hevy-key") -> None:
+    settings = Settings(hevy_api_key=api_key)
+    monkeypatch.setattr(external_service, "get_settings", lambda: settings)
+    # Mirror the real factory's contract: no key configured -> no client.
+    monkeypatch.setattr(
+        external_service,
+        "hevy_client_from_settings",
+        lambda settings: fake if settings.hevy_api_key else None,
+    )
+
+
+def test_upsert_weight_dual_writes_weight_to_hevy(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient()
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    # Hevy holds no measurement for the date (GET 404s), so the merged body is
+    # weight-only. Hevy's PutBodyMeasurement weight unit is kilograms (verified
+    # against the live OpenAPI spec), so the local kg value is forwarded
+    # unchanged.
+    assert fake.calls == [
+        ("get_body_measurement", ("2026-09-28",)),
+        ("put_body_measurement", ("2026-09-28", {"weight_kg": 80.5})),
+    ]
+    assert "hevy_error" not in response.json()
+    check_in = client.get("/api/check-ins", headers=auth_headers, params={"date": "2026-09-28"})
+    assert check_in.json()["weightKg"] == 80.5
+
+
+def test_upsert_weight_merges_existing_hevy_measurement(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient(
+        measurement={
+            "date": "2026-09-28",
+            "weight_kg": 79.0,
+            "fat_percent": 18.5,
+            "waist": 80.0,
+        }
+    )
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    # Hevy's PUT overwrites every field for the date, so the dual-write reads
+    # the existing measurement first and merges: the old fat_percent and waist
+    # survive alongside the new weight, and Hevy's `date` echo is not sent back
+    # (PutBodyMeasurement carries no date field).
+    assert fake.calls == [
+        ("get_body_measurement", ("2026-09-28",)),
+        (
+            "put_body_measurement",
+            ("2026-09-28", {"weight_kg": 80.5, "fat_percent": 18.5, "waist": 80.0}),
+        ),
+    ]
+    assert "hevy_error" not in response.json()
+
+
+# --- PUT 404 -> POST-create fallback (Hevy's PUT is update-only) -----------------
+
+
+HEVY_PUT_NOT_FOUND = HevyAPIError(
+    'Hevy PUT /v1/body_measurements/2026-09-28 failed with status 404: {"error":"Body measurement not found"}',
+    status=404,
+)
+HEVY_CREATE_CONFLICT = HevyAPIError(
+    'Hevy POST /v1/body_measurements failed with status 409: {"error":"A measurement for this date already exists"}',
+    status=409,
+)
+HEVY_CREATE_FAILURE = HevyAPIError(
+    'Hevy POST /v1/body_measurements failed with status 400: {"error":"Invalid request body"}',
+    status=400,
+)
+
+
+def test_upsert_weight_put_404_creates_hevy_measurement(client, auth_headers, monkeypatch) -> None:
+    """Hevy's PUT /v1/body_measurements/{date} is update-only — it answers 404
+    when the date has no measurement yet — so the dual-write's first weight
+    for a date falls back to POST /v1/body_measurements, whose BodyMeasurement
+    schema carries the date inside its body."""
+    fake = _FakeHevyClient(put_error=HEVY_PUT_NOT_FOUND)
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    assert fake.calls == [
+        ("get_body_measurement", ("2026-09-28",)),
+        ("put_body_measurement", ("2026-09-28", {"weight_kg": 80.5})),
+        ("create_body_measurement", ({"date": "2026-09-28", "weight_kg": 80.5},)),
+    ]
+    assert "hevy_error" not in response.json()
+    check_in = client.get("/api/check-ins", headers=auth_headers, params={"date": "2026-09-28"})
+    assert check_in.json()["weightKg"] == 80.5
+
+
+def test_upsert_weight_create_409_race_refetches_merges_and_puts(client, auth_headers, monkeypatch) -> None:
+    """A 409 on the fallback create (another writer created the day's entry in
+    between) re-fetches it, re-merges the weight on top, and retries the PUT:
+    the race winner's other fields survive, no hevy_error is reported."""
+    fake = _FakeHevyClient(
+        put_error=[HEVY_PUT_NOT_FOUND, None],  # retry after the race succeeds
+        create_error=HEVY_CREATE_CONFLICT,
+        measurement=[None, {"date": "2026-09-28", "weight_kg": 75.0, "fat_percent": 18.5}],
+    )
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    assert fake.calls == [
+        ("get_body_measurement", ("2026-09-28",)),
+        ("put_body_measurement", ("2026-09-28", {"weight_kg": 80.5})),
+        ("create_body_measurement", ({"date": "2026-09-28", "weight_kg": 80.5},)),
+        ("get_body_measurement", ("2026-09-28",)),
+        ("put_body_measurement", ("2026-09-28", {"weight_kg": 80.5, "fat_percent": 18.5})),
+    ]
+    assert "hevy_error" not in response.json()
+
+
+def test_upsert_weight_create_failure_reports_hevy_error(client, auth_headers, monkeypatch) -> None:
+    """A fallback create that fails for any reason other than 409 is reported
+    via hevy_error; the local check-in still succeeds."""
+    fake = _FakeHevyClient(put_error=HEVY_PUT_NOT_FOUND, create_error=HEVY_CREATE_FAILURE)
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["hevy_error"] == str(HEVY_CREATE_FAILURE)
+    assert [kind for kind, _ in fake.calls] == [
+        "get_body_measurement",
+        "put_body_measurement",
+        "create_body_measurement",
+    ]
+    check_in = client.get("/api/check-ins", headers=auth_headers, params={"date": "2026-09-28"})
+    assert check_in.json()["weightKg"] == 80.5
+
+
+def test_upsert_weight_hevy_failure_keeps_local_check_in(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient(put_error=HEVY_PUT_FAILURE)
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["weightKg"] == 80.5
+    assert response.json()["hevy_error"] == str(HEVY_PUT_FAILURE)
+    check_in = client.get("/api/check-ins", headers=auth_headers, params={"date": "2026-09-28"})
+    assert check_in.json()["weightKg"] == 80.5
+
+
+def test_upsert_weight_hevy_get_failure_keeps_local_check_in(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient(
+        get_error=HevyAPIError(
+            'Hevy GET /v1/body_measurements/2026-09-28 failed with status 500: {"error":"boom"}',
+            status=500,
+        )
+    )
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["weightKg"] == 80.5
+    assert "hevy_error" in response.json()
+    # No PUT without the existing measurement: a weight-only PUT could wipe
+    # same-day fat/circumference data Hevy still holds.
+    assert [kind for kind, _ in fake.calls] == ["get_body_measurement"]
+    check_in = client.get("/api/check-ins", headers=auth_headers, params={"date": "2026-09-28"})
+    assert check_in.json()["weightKg"] == 80.5
+
+
+def test_upsert_weight_hevy_network_failure_keeps_local_check_in(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient(put_error=requests.ConnectionError("Hevy unreachable"))
+    _patch_hevy(client, monkeypatch, fake)
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["hevy_error"] == "Hevy unreachable"
+    check_in = client.get("/api/check-ins", headers=auth_headers, params={"date": "2026-09-28"})
+    assert check_in.json()["weightKg"] == 80.5
+
+
+def test_upsert_weight_skips_hevy_without_api_key(client, auth_headers, monkeypatch) -> None:
+    fake = _FakeHevyClient()
+    _patch_hevy(client, monkeypatch, fake, api_key="")
+    api_key = issue_key(client, auth_headers)
+    headers = external_headers(api_key)
+
+    response = client.put(
+        "/api/external/weight",
+        headers=headers,
+        json={"date": "2026-09-28", "weightKg": 80.5},
+    )
+
+    assert response.status_code == 200, response.text
+    assert fake.calls == []
+    assert "hevy_error" not in response.json()
+
+
 def test_day_status_get_defaults_to_today_and_requires_auth(client, auth_headers) -> None:
     assert client.get("/api/external/day-status").status_code == 401
     api_key = issue_key(client, auth_headers)
@@ -1220,6 +1539,78 @@ def test_health_range_past_days_are_cache_only_without_fetch_or_cache_writes(
     finally:
         db.close()
         close_db(gen)
+
+
+def _hevy_range_set(index: int) -> dict:
+    return {
+        "index": index,
+        "type": "normal",
+        "weight_kg": 40.0,
+        "reps": 10,
+        "distance_meters": None,
+        "duration_seconds": None,
+        "rpe": None,
+        "custom_metric": None,
+        "rep_range": None,
+    }
+
+
+def test_health_range_includes_strength_for_days_missing_garmin_rows(
+    client, seeded_garmin_days
+) -> None:
+    # A day with a Hevy workout but no cached Garmin row must still surface the
+    # strength block in the range view, like /today does.
+    db, gen = db_session(client)
+    try:
+        user_id = db.query(UserRow).first().id
+        db.add(
+            HevyWorkoutRow(
+                id="w-range",
+                user_id=user_id,
+                title="Push Day",
+                start_time=datetime(2026, 8, 14, 22, 30, tzinfo=timezone.utc),
+                end_time=datetime(2026, 8, 14, 23, 15, tzinfo=timezone.utc),
+                local_date="2026-08-15",  # 2026-08-14T22:30Z == 00:30 SAST 08-15
+                garmin_activity_ids=[],
+                payload={
+                    "id": "w-range",
+                    "title": "Push Day",
+                    "routine_id": None,
+                    "description": "Hard session",
+                    "start_time": "2026-08-14T22:30:00+00:00",
+                    "end_time": "2026-08-14T23:15:00+00:00",
+                    "exercises": [
+                        {
+                            "index": 0,
+                            "title": "Bent Over Row (Barbell)",
+                            "exercise_template_id": "55E6546F",
+                            "superset_id": None,
+                            "rest_seconds": None,
+                            "notes": None,
+                            "sets": [_hevy_range_set(index) for index in range(3)],
+                        }
+                    ],
+                },
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+        close_db(gen)
+
+    resp = client.get("/api/external/health?from=2026-08-14&to=2026-08-16")
+
+    assert resp.status_code == 200, resp.text
+    days = {day["date"]: day for day in resp.json()["days"]}
+    target = days["2026-08-15"]
+    assert target["status"] == "unavailable"
+    assert target["reason"] == "missing"
+    assert target["strength"]["sessions"][0]["workout_id"] == "w-range"
+    assert target["strength"]["total_volume_kg"] == 1200.0
+    assert target["strength"]["hard_sets"] == 3
+    # Workout-less days keep the payload unchanged: no strength key at all.
+    assert "strength" not in days["2026-08-14"]
+    assert "strength" not in days["2026-08-16"]
 
 
 def test_health_range_today_is_live_fetched_and_uncached_past_days_stay_missing(

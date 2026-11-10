@@ -8,7 +8,7 @@ GET /api/external/info
 Plain-text instructions. No auth.
 
 GET /api/external/docs
-Longer markdown reference. No auth.
+Longer markdown reference. No auth. Its Hevy section covers mirror workouts, the exercise catalogue, routine and body-measurement write proxies, and the strength block in day views.
 
 GET /api/external/foods?q=
 Saved foods. Optional q matches the name. Macros are for one serving. Includes description, which is null when none was saved. No photos.

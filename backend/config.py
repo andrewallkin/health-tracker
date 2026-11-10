@@ -44,6 +44,9 @@ class Settings(BaseSettings):
 
     garmin_fetch_concurrency: int = 3
 
+    hevy_api_key: str = ""
+    hevy_webhook_token: str = ""
+
     @field_validator("cors_origins", mode="plain")
     @classmethod
     def _split_origins(cls, value: Any) -> Any:

@@ -4,6 +4,7 @@ import uuid
 import calendar
 from datetime import date, timedelta
 
+import requests
 from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -23,8 +24,10 @@ from ..db_models import (
     utcnow,
 )
 from ..garmin_client import _dict, _number, garmin_from_tokens
+from ..hevy_client import HevyAPIError, HevyClient, hevy_client_from_settings
 from .external_time import add_days, parse_date_key, today_key
 from .health_service import GarminNotConnectedError, require_garmin_connected, resolve_dates, resolve_day
+from .hevy_strength import build_strength_block
 from .mappers import get_daily_goal, get_or_create_app_settings
 from .compose import (
     cascade_delete_food,
@@ -593,41 +596,50 @@ def _health_for_dates(db: Session, user_id: str, dates: list[str]) -> tuple[str 
     return None, {day.date: day for day in days}
 
 
-def _health_block(day: DailyHealth | None, reason: str | None) -> dict:
+def _health_block(
+    db: Session, user_id: str, date_key: str, day: DailyHealth | None, reason: str | None
+) -> dict:
+    # Strength comes from Hevy workouts, independent of Garmin health: the
+    # block is attached (when the day has workouts) to unavailable days too.
+    strength = build_strength_block(db, user_id, date_key)
     if reason is not None or day is None:
-        return {"status": "unavailable", "reason": reason or "missing"}
-    return {
-        "status": "ready",
-        "totalCalories": day.totalCalories,
-        "activeCalories": day.activeCalories,
-        "bmrCalories": day.bmrCalories,
-        "steps": day.steps,
-        "stepGoal": day.stepGoal,
-        "restingHr": day.restingHr,
-        "minHr": day.minHr,
-        "maxHr": day.maxHr,
-        "restingHr7dAvg": day.avgRestingHr7d,
-        "hrv": {"value": day.hrv, "status": day.hrvStatus, "weeklyAvg": day.hrvWeeklyAvg},
-        "sleep": {
-            "totalHours": day.sleepHours,
-            "deepHours": day.deepSleepHours,
-            "remHours": day.remSleepHours,
-            "lightHours": day.lightSleepHours,
-            "avgHr": day.sleepAvgHr,
-            "score": day.sleepScore,
-        },
-        "activities": [_activity_out(activity) for activity in day.activities],
-        "trainingReadiness": day.trainingReadiness,
-        "trainingStatus": day.trainingStatus,
-        "bodyBattery": day.bodyBattery,
-        "stress": day.stress,
-        "enduranceScore": day.enduranceScore,
-        "intensityMinutes": day.intensityMinutes,
-        "hillScore": day.hillScore,
-        "fitnessAge": day.fitnessAge,
-        "respiration": day.respiration,
-        "spo2": day.spo2,
-    }
+        block: dict = {"status": "unavailable", "reason": reason or "missing"}
+    else:
+        block = {
+            "status": "ready",
+            "totalCalories": day.totalCalories,
+            "activeCalories": day.activeCalories,
+            "bmrCalories": day.bmrCalories,
+            "steps": day.steps,
+            "stepGoal": day.stepGoal,
+            "restingHr": day.restingHr,
+            "minHr": day.minHr,
+            "maxHr": day.maxHr,
+            "restingHr7dAvg": day.avgRestingHr7d,
+            "hrv": {"value": day.hrv, "status": day.hrvStatus, "weeklyAvg": day.hrvWeeklyAvg},
+            "sleep": {
+                "totalHours": day.sleepHours,
+                "deepHours": day.deepSleepHours,
+                "remHours": day.remSleepHours,
+                "lightHours": day.lightSleepHours,
+                "avgHr": day.sleepAvgHr,
+                "score": day.sleepScore,
+            },
+            "activities": [_activity_out(activity) for activity in day.activities],
+            "trainingReadiness": day.trainingReadiness,
+            "trainingStatus": day.trainingStatus,
+            "bodyBattery": day.bodyBattery,
+            "stress": day.stress,
+            "enduranceScore": day.enduranceScore,
+            "intensityMinutes": day.intensityMinutes,
+            "hillScore": day.hillScore,
+            "fitnessAge": day.fitnessAge,
+            "respiration": day.respiration,
+            "spo2": day.spo2,
+        }
+    if strength is not None:
+        block["strength"] = strength
+    return block
 
 
 def build_today(db: Session, user_id: str, date_key: str) -> dict:
@@ -654,7 +666,7 @@ def build_today(db: Session, user_id: str, date_key: str) -> dict:
         "entries": [_entry_out(entry) for entry in entries],
         "notTracked": get_day_status_for_date(db, user_id, date_key) is not None,
         "weightKg": check_in.weight_kg if check_in is not None else None,
-        "health": _health_block(days.get(date_key), reason),
+        "health": _health_block(db, user_id, date_key, days.get(date_key), reason),
     }
 
 
@@ -805,12 +817,18 @@ def _date_span(from_key: str, to_key: str) -> list[str]:
     return [(start + timedelta(days=offset)).isoformat() for offset in range(span_days)]
 
 
-def _range_day_out(date_str: str, day: DailyHealth | None, today: str) -> dict:
+def _range_day_out(db: Session, user_id: str, date_str: str, day: DailyHealth | None, today: str) -> dict:
     if date_str > today:
         return {"date": date_str, "status": "unavailable", "reason": "future"}
     if day is None:
-        return {"date": date_str, "status": "unavailable", "reason": "missing"}
-    return {"date": day.date, **_health_block(day, None)}
+        # No cached Garmin row, but the day may still have Hevy workouts: attach
+        # the strength block so the range view matches /today.
+        missing: dict = {"date": date_str, "status": "unavailable", "reason": "missing"}
+        strength = build_strength_block(db, user_id, date_str)
+        if strength is not None:
+            missing["strength"] = strength
+        return missing
+    return {"date": day.date, **_health_block(db, user_id, date_str, day, None)}
 
 
 def build_health_range(db: Session, user_id: str, from_key: str, to_key: str) -> dict:
@@ -844,7 +862,7 @@ def build_health_range(db: Session, user_id: str, from_key: str, to_key: str) ->
         "from": from_key,
         "to": to_key,
         "status": "ready",
-        "days": [_range_day_out(date_str, days.get(date_str), today) for date_str in span],
+        "days": [_range_day_out(db, user_id, date_str, days.get(date_str), today) for date_str in span],
     }
 
 
@@ -1030,6 +1048,57 @@ def build_weight(db: Session, user_id: str, date_key: str) -> dict:
     }
 
 
+def _hevy_weight_dual_write(client: HevyClient, date_key: str, weight_kg: float) -> str | None:
+    """Best-effort dual-write of ``weight_kg`` to Hevy; returns an error string or None.
+
+    Hevy's PutBodyMeasurement weight unit is kilograms (verified against the
+    live OpenAPI spec), so the value is forwarded unchanged. Hevy's PUT
+    overwrites ALL fields for the date, so the day's existing measurement (if
+    any) is read first and the weight is merged on top — a weight-only write
+    must not wipe same-day fat%/circumference data. The GET response is the
+    BodyMeasurement object itself (no envelope); its `date` echo is stripped
+    because PutBodyMeasurement carries no date field.
+
+    Hevy's PUT is update-only (404 when the date has no measurement yet), so
+    the merged body falls back to POST /v1/body_measurements — POST's
+    BodyMeasurement schema carries the date inside its body. A 409 from the
+    POST means another writer created the entry in between: it is re-fetched,
+    the weight re-merged on top, and the PUT retried. Every Hevy failure is
+    reported (never raised) so the local write cannot fail because of Hevy.
+    """
+    try:
+        existing = client.get_body_measurement(date_key) or {}
+    except (HevyAPIError, requests.RequestException) as err:
+        # Without the measurement Hevy holds, a PUT would blind-overwrite
+        # every field, so report the failure instead of sending weight only.
+        return str(err)
+    merged = {key: value for key, value in existing.items() if key != "date"}
+    merged["weight_kg"] = weight_kg
+    try:
+        client.put_body_measurement(date_key, merged)
+    except (HevyAPIError, requests.RequestException) as err:
+        if not (isinstance(err, HevyAPIError) and err.status == 404):
+            return str(err)
+        try:
+            client.create_body_measurement({**merged, "date": date_key})
+        except (HevyAPIError, requests.RequestException) as create_err:
+            if not (isinstance(create_err, HevyAPIError) and create_err.status == 409):
+                return str(create_err)
+            # Race: the entry was created between our PUT and POST. Fetch it
+            # and re-merge the weight so the race winner's other fields survive.
+            try:
+                existing = client.get_body_measurement(date_key) or {}
+            except (HevyAPIError, requests.RequestException) as fetch_err:
+                return str(fetch_err)
+            merged = {key: value for key, value in existing.items() if key != "date"}
+            merged["weight_kg"] = weight_kg
+            try:
+                client.put_body_measurement(date_key, merged)
+            except (HevyAPIError, requests.RequestException) as put_err:
+                return str(put_err)
+    return None
+
+
 def upsert_weight(db: Session, user_id: str, date_key: str, weight_kg: float) -> dict:
     if not MIN_WEIGHT_KG <= weight_kg <= MAX_WEIGHT_KG:
         raise HTTPException(
@@ -1050,4 +1119,13 @@ def upsert_weight(db: Session, user_id: str, date_key: str, weight_kg: float) ->
     else:
         row.weight_kg = weight_kg
     db.commit()
-    return build_weight(db, user_id, date_key)
+    result = build_weight(db, user_id, date_key)
+    # Best-effort dual-write to Hevy once the local check-in is committed (see
+    # _hevy_weight_dual_write for the merge/upsert semantics). A Hevy failure
+    # must never fail the local write: it is reported via "hevy_error".
+    client = hevy_client_from_settings(get_settings())
+    if client is not None:
+        hevy_error = _hevy_weight_dual_write(client, date_key, weight_kg)
+        if hevy_error is not None:
+            result["hevy_error"] = hevy_error
+    return result

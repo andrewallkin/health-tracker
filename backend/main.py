@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .api.hevy_webhook import router as hevy_webhook_router
 from .api.routes import (
     auth,
     check_ins,
@@ -27,8 +28,9 @@ from .config import get_settings
 async def lifespan(_app: FastAPI):
     settings = get_settings()
     settings.meal_photos_dir.mkdir(parents=True, exist_ok=True)
-    from .api.snapshot_scheduler import start_snapshot_scheduler
+    from .api.snapshot_scheduler import start_hevy_catchup_scheduler, start_snapshot_scheduler
     start_snapshot_scheduler()
+    start_hevy_catchup_scheduler()
     yield
 
 
@@ -57,6 +59,7 @@ app.include_router(check_ins.router, prefix="/api")
 app.include_router(day_statuses.router, prefix="/api")
 app.include_router(health.router, prefix="/api")
 app.include_router(external.router, prefix="/api")
+app.include_router(hevy_webhook_router, prefix="/api")
 
 
 @app.get("/health")
