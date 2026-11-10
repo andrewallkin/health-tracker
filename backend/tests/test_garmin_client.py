@@ -166,6 +166,7 @@ def test_fetch_and_normalize_day_maps_summary_sleep_hr_hrv_activities():
             "activityName": "Run",
             "activityType": {"typeKey": "running"},
             "startTimeLocal": "2026-07-18 07:30:00",
+            "startTimeGMT": "2026-07-18 05:30:00",
             "duration": 1800,
             "calories": 300,
             "averageHR": 150,
@@ -182,6 +183,7 @@ def test_fetch_and_normalize_day_maps_summary_sleep_hr_hrv_activities():
     assert day["hrvStatus"] == "balanced"
     assert day["activities"][0]["type"] == "running"
     assert day["activities"][0]["startTime"] == "07:30"
+    assert day["activities"][0]["startTimeUtc"] == "2026-07-18T05:30:00+00:00"
     assert day["activities"][0]["distanceKm"] == 5.0
     assert day["trainingReadiness"] is None
     assert day["trainingStatus"] is None

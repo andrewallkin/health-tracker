@@ -331,6 +331,74 @@ def test_reconcile_links_matches_overlapping_garmin_activity(db_session) -> None
     assert db_session.get(HevyWorkoutRow, "workout-1").garmin_activity_ids == ["24833957297"]
 
 
+def test_reconcile_links_uses_utc_start_when_local_clock_is_not_sast(db_session) -> None:
+    """A watch on Vietnam time (UTC+7) stores 18:00 locally for an 11:00 UTC start.
+
+    Reading that clock as SAST is five hours off and misses the 20-minute
+    window. The activity's UTC instant still matches the Hevy start.
+    """
+    user = _create_user(db_session)
+    _seed_garmin_day(
+        db_session,
+        user.id,
+        "2026-10-19",
+        [
+            {
+                "id": "vn-strength",
+                "name": "Strength",
+                "type": "strength_training",
+                "startTime": "18:00",
+                "startTimeUtc": "2026-10-19T11:00:00+00:00",
+                "durationMin": 44,
+            }
+        ],
+    )
+    row = _seed_workout(
+        db_session,
+        user.id,
+        "workout-vietnam",
+        start_utc=datetime(2026, 10, 19, 11, 0, tzinfo=UTC),
+        local_date="2026-10-19",
+    )
+
+    links = reconcile_links(db_session, row)
+
+    assert links == ["vn-strength"]
+
+
+def test_reconcile_links_prefers_utc_start_over_a_matching_sast_clock(db_session) -> None:
+    """When both clocks are present, the UTC instant wins.
+
+    13:00 read as SAST would match an 11:00 UTC workout, but the stored UTC
+    start is five hours later, so this activity is not the same session.
+    """
+    user = _create_user(db_session)
+    _seed_garmin_day(
+        db_session,
+        user.id,
+        "2026-10-19",
+        [
+            {
+                "id": "wrong-instant",
+                "name": "Strength",
+                "type": "strength_training",
+                "startTime": "13:00",
+                "startTimeUtc": "2026-10-19T16:00:00+00:00",
+                "durationMin": 44,
+            }
+        ],
+    )
+    row = _seed_workout(
+        db_session,
+        user.id,
+        "workout-vietnam",
+        start_utc=datetime(2026, 10, 19, 11, 0, tzinfo=UTC),
+        local_date="2026-10-19",
+    )
+
+    assert reconcile_links(db_session, row) == []
+
+
 def test_reconcile_links_ignores_activity_outside_window(db_session) -> None:
     user = _create_user(db_session)
     # 21:00 SAST vs 16:22 SAST workout start: way beyond 20 minutes.

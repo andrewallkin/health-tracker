@@ -77,15 +77,11 @@ CASES = [
         200,
     ),
     ("POST", "/api/external/hevy/routine-folders", FOLDER_BODY, ("create_routine_folder", FOLDER_BODY), 201),
-    (
-        "PUT",
-        "/api/external/hevy/body-measurements/2026-11-10",
-        MEASUREMENT_BODY,
-        ("put_body_measurement", ("2026-11-10", MEASUREMENT_BODY)),
-        200,
-    ),
 ]
 WRITE_ENDPOINTS = [(method, path, body) for method, path, body, _, _ in CASES]
+WRITE_ENDPOINTS.append(
+    ("PUT", "/api/external/hevy/body-measurements/2026-11-10", MEASUREMENT_BODY)
+)
 
 
 class FakeHevyClient:
@@ -334,6 +330,7 @@ def test_routine_and_folder_bodies_must_match_hevy_wrappers(
 def test_body_measurement_forwards_only_sent_fields_including_explicit_nulls(
     client: TestClient, fake_hevy: FakeHevyClient
 ) -> None:
+    fake_hevy.method_responses = {"get_body_measurement": EXISTING_MEASUREMENT}
     auth = _auth_headers(client)
 
     response = client.put(
@@ -343,16 +340,15 @@ def test_body_measurement_forwards_only_sent_fields_including_explicit_nulls(
     )
 
     assert response.status_code == 200
-    assert fake_hevy.calls == [("put_body_measurement", ("2026-11-10", {"weight_kg": None, "fat_percent": 18.5}))]
+    assert fake_hevy.calls == [
+        ("get_body_measurement", ("2026-11-10",)),
+        ("put_body_measurement", ("2026-11-10", {"weight_kg": None, "fat_percent": 18.5})),
+    ]
 
 
-# --- body measurements: PUT 404 -> POST-create fallback (Hevy PUT is update-only)
+# --- body measurements: GET first, POST when missing, PUT when present ----------
 
 
-HEVY_PUT_404 = HevyAPIError(
-    'Hevy PUT /v1/body_measurements/2026-11-10 failed with status 404: {"error":"Body measurement not found"}',
-    status=404,
-)
 HEVY_CREATE_409 = HevyAPIError(
     'Hevy POST /v1/body_measurements failed with status 409: {"error":"A measurement for this date already exists"}',
     status=409,
@@ -369,13 +365,15 @@ EXISTING_MEASUREMENT = {
 }
 
 
-def test_body_measurement_put_404_creates_via_post(client: TestClient, fake_hevy: FakeHevyClient) -> None:
-    """Hevy's PUT /v1/body_measurements/{date} is update-only (404 when the
-    date has no measurement yet), so a first write for a new date falls back
-    to POST with the same validated fields plus the date (POST's
-    BodyMeasurement schema carries the date in its body) and returns 201 with
-    Hevy's empty create response."""
-    fake_hevy.method_errors = {"put_body_measurement": HEVY_PUT_404}
+def test_body_measurement_missing_date_creates_via_post(client: TestClient, fake_hevy: FakeHevyClient) -> None:
+    """A date Hevy does not have yet is created with POST and reported as 201.
+
+    Live Hevy's PUT can answer 200 with an empty body even for a new date, so
+    the proxy asks GET first instead of treating a successful PUT as an update.
+    POST's BodyMeasurement schema carries the date inside its body. Hevy's
+    create response body is empty.
+    """
+    fake_hevy.method_responses = {"get_body_measurement": None}
     fake_hevy.response = {}
     auth = _auth_headers(client)
 
@@ -388,21 +386,18 @@ def test_body_measurement_put_404_creates_via_post(client: TestClient, fake_hevy
     assert response.status_code == 201, response.text
     assert response.json() == {}
     assert fake_hevy.calls == [
-        ("put_body_measurement", ("2026-11-10", {"weight_kg": 80.5, "fat_percent": 18.5})),
+        ("get_body_measurement", ("2026-11-10",)),
         ("create_body_measurement", {"date": "2026-11-10", "weight_kg": 80.5, "fat_percent": 18.5}),
     ]
 
 
 def test_body_measurement_create_409_race_refetches_merges_and_puts(client: TestClient, fake_hevy: FakeHevyClient) -> None:
-    """A 409 on the fallback create means another writer created the day's
-    entry in between: the proxy re-fetches it, merges the validated fields on
+    """A 409 on the create means another writer created the day's entry after
+    the GET saw none: the proxy re-fetches it, merges the validated fields on
     top (fields the race winner set and the caller did not send survive), and
-    retries the PUT — whose Hevy response is returned untouched with 200."""
-    fake_hevy.method_errors = {
-        "put_body_measurement": [HEVY_PUT_404, None],  # retry after the race succeeds
-        "create_body_measurement": HEVY_CREATE_409,
-    }
-    fake_hevy.method_responses = {"get_body_measurement": EXISTING_MEASUREMENT}
+    PUTs — whose Hevy response is returned untouched with 200."""
+    fake_hevy.method_errors = {"create_body_measurement": HEVY_CREATE_409}
+    fake_hevy.method_responses = {"get_body_measurement": [None, EXISTING_MEASUREMENT]}
     auth = _auth_headers(client)
 
     response = client.put(
@@ -414,7 +409,7 @@ def test_body_measurement_create_409_race_refetches_merges_and_puts(client: Test
     assert response.status_code == 200, response.text
     assert response.json() == HEVY_ROUTINE_RESPONSE
     assert fake_hevy.calls == [
-        ("put_body_measurement", ("2026-11-10", {"weight_kg": 80.5})),
+        ("get_body_measurement", ("2026-11-10",)),
         ("create_body_measurement", {"date": "2026-11-10", "weight_kg": 80.5}),
         ("get_body_measurement", ("2026-11-10",)),
         (
@@ -427,10 +422,8 @@ def test_body_measurement_create_409_race_refetches_merges_and_puts(client: Test
 def test_body_measurement_create_failure_surfaces_as_502(client: TestClient, fake_hevy: FakeHevyClient) -> None:
     """A fallback create that fails for any reason other than 409 keeps
     surfacing as 502 with Hevy's message."""
-    fake_hevy.method_errors = {
-        "put_body_measurement": HEVY_PUT_404,
-        "create_body_measurement": HEVY_CREATE_400,
-    }
+    fake_hevy.method_responses = {"get_body_measurement": None}
+    fake_hevy.method_errors = {"create_body_measurement": HEVY_CREATE_400}
     auth = _auth_headers(client)
 
     response = client.put(
@@ -451,6 +444,36 @@ def test_body_measurement_rejects_malformed_date(client: TestClient, fake_hevy: 
         json={"weight_kg": 80.5},
         headers=auth,
     )
+
+    assert response.status_code == 400
+    assert fake_hevy.calls == []
+
+
+def test_get_body_measurement_returns_hevy_record(client: TestClient, fake_hevy: FakeHevyClient) -> None:
+    fake_hevy.method_responses = {"get_body_measurement": EXISTING_MEASUREMENT}
+    auth = _auth_headers(client)
+
+    response = client.get("/api/external/hevy/body-measurements/2026-11-10", headers=auth)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == EXISTING_MEASUREMENT
+    assert fake_hevy.calls == [("get_body_measurement", ("2026-11-10",))]
+
+
+def test_get_body_measurement_404_when_hevy_has_none(client: TestClient, fake_hevy: FakeHevyClient) -> None:
+    fake_hevy.method_responses = {"get_body_measurement": None}
+    auth = _auth_headers(client)
+
+    response = client.get("/api/external/hevy/body-measurements/2020-01-01", headers=auth)
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Body measurement not found"
+
+
+def test_get_body_measurement_rejects_malformed_date(client: TestClient, fake_hevy: FakeHevyClient) -> None:
+    auth = _auth_headers(client)
+
+    response = client.get("/api/external/hevy/body-measurements/not-a-date", headers=auth)
 
     assert response.status_code == 400
     assert fake_hevy.calls == []

@@ -94,7 +94,7 @@ def test_parse_sample_workout_from_discovery():
     assert workout.id == "05fcaa01-d0ec-4206-bd4e-a47585915642"
     assert workout.title == "Afternoon workout 💪"
     assert workout.routine_id is None
-    assert workout.description == ""
+    assert workout.description is None
     assert workout.start_time == datetime(2025, 11, 27, 13, 13, 23, tzinfo=UTC)
     assert workout.end_time == datetime(2025, 11, 27, 14, 6, 1, tzinfo=UTC)
     assert workout.updated_at == datetime(2025, 11, 27, 14, 6, 5, 703000, tzinfo=UTC)

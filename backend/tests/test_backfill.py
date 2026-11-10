@@ -21,3 +21,15 @@ def test_should_skip_when_new_fields_present():
     assert should_skip({"is_complete": True, "payload": {"steps": 1}}) is False
     assert should_skip({"is_complete": False, "payload": {"trainingStatus": {}}}) is False
     assert should_skip(None) is False
+    # Device-local clocks without a UTC instant cannot link overseas workouts.
+    assert should_skip({
+        "is_complete": True,
+        "payload": {"trainingStatus": {}, "activities": [{"id": "1", "startTime": "18:00"}]},
+    }) is False
+    assert should_skip({
+        "is_complete": True,
+        "payload": {
+            "trainingStatus": {},
+            "activities": [{"id": "1", "startTimeUtc": "2026-10-19T11:00:00+00:00"}],
+        },
+    }) is True

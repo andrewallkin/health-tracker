@@ -9,9 +9,9 @@ Progression and PR math include every logged set (warmups included).
 Write proxies forward validated agent payloads to the Hevy API (routine
 bodies only lose ``rep_range`` keys left unset — Hevy rejects an explicit
 ``"rep_range": null`` on PUT) and surface Hevy and network errors as 502
-responses. The body-measurement proxy upserts: Hevy's
-``PUT /v1/body_measurements/{date}`` is update-only, so a first write for a
-new date falls back to ``POST /v1/body_measurements``.
+responses. The body-measurement proxy reads the date first: a missing
+measurement is created with POST (201) and an existing one is overwritten
+with PUT (200).
 """
 
 from __future__ import annotations
@@ -188,7 +188,10 @@ def get_hevy_workout(db: Session, user_id: str, workout_id: str) -> dict | None:
         return None
     detail = _workout_summary(row)
     payload = _payload(row)
-    detail["description"] = payload.get("description")
+    description = payload.get("description")
+    detail["description"] = (
+        None if isinstance(description, str) and not description.strip() else description
+    )
     detail["exercises"] = _exercises_of(payload)
     return detail
 
@@ -580,40 +583,53 @@ def create_folder_proxy(
     return _hevy_forward(client.create_routine_folder, body.model_dump())
 
 
+def get_body_measurement_proxy(
+    db: Session, user: UserRow, client: HevyClient, date: str
+) -> dict:
+    """Return Hevy's body measurement for ``date``, or 404 when Hevy has none."""
+    try:
+        measurement = client.get_body_measurement(date)
+    except (HevyAPIError, requests.RequestException) as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    if not measurement:
+        raise HTTPException(status_code=404, detail="Body measurement not found")
+    return measurement
+
+
 def put_body_measurement_proxy(
     db: Session, user: UserRow, client: HevyClient, date: str, body: dict
 ) -> tuple[dict, bool]:
-    """Forward validated body-measurement fields for ``date`` to Hevy.
+    """Upsert validated body-measurement fields for ``date`` on Hevy.
 
-    Hevy's ``PUT /v1/body_measurements/{date}`` is update-only — it answers
-    404 ("Body measurement not found") when no measurement exists for the
-    date — so the proxy upserts: a first write for a new date falls back to
-    ``POST /v1/body_measurements`` with the same fields plus ``date`` (POST's
-    ``BodyMeasurement`` schema carries the date inside the body). A 409 from
-    the POST means another writer created the entry in between: the
-    measurement is re-fetched, the validated fields are merged on top (a
-    blind re-PUT would wipe the race winner's fields) and the PUT is retried.
-    Returns ``(hevy_response, created)`` where ``created`` is True only when
-    the POST-create path succeeded — the route maps that to 201; every other
-    Hevy or network failure surfaces as 502.
+    Live Hevy's ``PUT /v1/body_measurements/{date}`` can answer 200 with an
+    empty body even when the date is new, so a successful PUT cannot tell a
+    create from an update. The proxy asks ``GET`` first. A missing date is
+    created with ``POST /v1/body_measurements`` (the date lives in that body)
+    and reported as created. An existing date is overwritten with PUT — fields
+    omitted from ``body`` are cleared, matching Hevy's replace semantics.
+
+    A 409 from the POST means another writer created the entry in between:
+    the measurement is re-fetched, the validated fields are merged on top,
+    and the PUT is retried. Returns ``(hevy_response, created)`` where
+    ``created`` is True only when the POST succeeded — the route maps that
+    to 201. Other Hevy or network failures surface as 502.
     """
     try:
-        return client.put_body_measurement(date, body), False
+        existing = client.get_body_measurement(date)
     except (HevyAPIError, requests.RequestException) as err:
-        if not (isinstance(err, HevyAPIError) and err.status == 404):
-            raise HTTPException(status_code=502, detail=str(err)) from err
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    if existing:
+        return _hevy_forward(client.put_body_measurement, date, body), False
     try:
         client.create_body_measurement({**body, "date": date})
     except (HevyAPIError, requests.RequestException) as err:
         if not (isinstance(err, HevyAPIError) and err.status == 409):
             raise HTTPException(status_code=502, detail=str(err)) from err
-        # Race: the entry was created between our PUT and POST. Fetch it and
-        # merge the validated fields on top before retrying the PUT.
         try:
-            existing = client.get_body_measurement(date) or {}
+            raced = client.get_body_measurement(date) or {}
         except (HevyAPIError, requests.RequestException) as fetch_err:
             raise HTTPException(status_code=502, detail=str(fetch_err)) from fetch_err
-        merged = {key: value for key, value in existing.items() if key != "date"}
+        merged = {key: value for key, value in raced.items() if key != "date"}
         merged.update(body)
         return _hevy_forward(client.put_body_measurement, date, merged), False
     return {}, True

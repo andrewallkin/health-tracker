@@ -335,6 +335,23 @@ def test_get_hevy_workout_returns_full_payload_detail(db_session) -> None:
     assert hevy_service.get_hevy_workout(db_session, user.id, "missing") is None
 
 
+def test_blank_workout_description_reads_as_null(db_session) -> None:
+    user = _create_user(db_session)
+    row = _seed_workout(
+        db_session, user.id, "w-blank",
+        start_utc=datetime(2026, 10, 24, 16, 22, tzinfo=UTC),
+        local_date="2026-10-24",
+        exercises=[],
+    )
+    row.payload = {**row.payload, "description": ""}
+    db_session.commit()
+
+    detail = hevy_service.get_hevy_workout(db_session, user.id, "w-blank")
+
+    assert detail is not None
+    assert detail["description"] is None
+
+
 # --- list_hevy_exercises ------------------------------------------------------
 
 

@@ -49,7 +49,15 @@ def date_range(from_key: str, to_key: str) -> list[str]:
 def should_skip(row_info: dict | None) -> bool:
     if row_info is None:
         return False
-    return bool(row_info.get("is_complete")) and "trainingStatus" in (row_info.get("payload") or {})
+    payload = row_info.get("payload") or {}
+    if not (row_info.get("is_complete") and "trainingStatus" in payload):
+        return False
+    # Activities saved before startTimeUtc only have a device-local clock.
+    # Refetch those days so overseas workouts can link to Hevy.
+    activities = payload.get("activities") or []
+    return all(
+        isinstance(activity, dict) and activity.get("startTimeUtc") for activity in activities
+    )
 
 
 def _load_tokens() -> str:

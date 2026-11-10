@@ -478,6 +478,17 @@ def post_hevy_routine_folder(
     return hevy_service.create_folder_proxy(db, user, hevy_client, payload)
 
 
+@router.get("/hevy/body-measurements/{date}")
+def get_hevy_body_measurement(
+    date: str,
+    db: Session = Depends(get_db),
+    user: UserRow = Depends(get_user_from_external_api_key),
+    hevy_client: HevyClient = Depends(require_hevy_configured),
+) -> dict:
+    parse_date_key(date)
+    return hevy_service.get_body_measurement_proxy(db, user, hevy_client, date)
+
+
 @router.put("/hevy/body-measurements/{date}")
 def put_hevy_body_measurement(
     date: str,

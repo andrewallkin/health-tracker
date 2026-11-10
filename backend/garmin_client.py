@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any, TypeVar
 
 from garminconnect import (
@@ -145,6 +146,30 @@ def _normalize_activities(raw: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _start_time_utc(activity: dict[str, Any]) -> str | None:
+    """ISO-8601 UTC start from Garmin's ``startTimeGMT``, or None when absent.
+
+    Garmin sends a naive timestamp such as ``2026-07-18 05:30:00``. That clock
+    is GMT, not the watch's local zone — overseas activities need it so Hevy
+    linking does not treat the local clock as Africa/Johannesburg.
+    """
+    raw = activity.get("startTimeGMT")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    text = raw.strip().replace("Z", "+00:00").replace(" ", "T", 1)
+    if "T" in text:
+        _, _, time_part = text.partition("T")
+        if time_part and "+" not in time_part and "-" not in time_part:
+            text = f"{text}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).isoformat()
+
+
 def _activity_payload(activity: dict[str, Any]) -> dict[str, Any]:
     activity_type = _dict(activity.get("activityType"))
     start_local = activity.get("startTimeLocal")
@@ -162,6 +187,7 @@ def _activity_payload(activity: dict[str, Any]) -> dict[str, Any]:
         "name": str(activity.get("activityName") or ""),
         "type": map_activity_type(activity_type.get("typeKey")),
         "startTime": start_time,
+        "startTimeUtc": _start_time_utc(activity),
         "durationMin": round(duration / 60) if duration else 0,
         "calories": round(_number(activity.get("calories"))),
         "avgHr": round(

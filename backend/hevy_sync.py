@@ -145,12 +145,38 @@ def sync_workout(
     return _upsert_workout(db, user_id, raw)
 
 
+def _activity_instant(garmin_row: GarminDailyHealthRow, activity: dict[str, Any]) -> datetime | None:
+    """UTC start of a stored Garmin activity.
+
+    ``startTimeUtc`` is the device's absolute start (Garmin ``startTimeGMT``).
+    Snapshots taken before that field existed only have ``startTime``, a
+    device-local ``HH:MM`` that older syncs stored as if it were SAST.
+    """
+    utc_raw = activity.get("startTimeUtc")
+    if isinstance(utc_raw, str) and utc_raw.strip():
+        try:
+            return _assume_utc(datetime.fromisoformat(utc_raw.replace("Z", "+00:00")))
+        except ValueError:
+            pass
+    start_time_raw = activity.get("startTime")
+    if not isinstance(start_time_raw, str) or not start_time_raw.strip():
+        return None
+    try:
+        return datetime.strptime(
+            f"{garmin_row.date} {start_time_raw}", "%Y-%m-%d %H:%M"
+        ).replace(tzinfo=TZ)
+    except ValueError:
+        return None
+
+
 def reconcile_links(db: Session, workout_row: HevyWorkoutRow) -> list[str]:
     """Link the workout to at most one Garmin activity (1:1, never overwrite).
 
     Candidates come from the ``GarminDailyHealthRow`` payload for the workout's
-    ``local_date``; an activity matches when its local start time is within 20
-    minutes of the workout start. The closest candidate wins; ties keep the
+    ``local_date``. An activity matches when its start is within 20 minutes of
+    the workout start. Prefer ``startTimeUtc`` so a watch set outside South
+    Africa still matches; fall back to reading ``startTime`` as SAST when the
+    snapshot has no UTC instant. The closest candidate wins; ties keep the
     first in payload order. Commits before returning.
     """
     current = list(workout_row.garmin_activity_ids or [])
@@ -171,13 +197,10 @@ def reconcile_links(db: Session, workout_row: HevyWorkoutRow) -> list[str]:
     for garmin_row in garmin_rows:
         activities = (garmin_row.payload or {}).get("activities") or []
         for activity in activities:
-            start_time_raw = activity.get("startTime")
             activity_id = activity.get("id")
-            if not start_time_raw or not activity_id:
+            activity_start = _activity_instant(garmin_row, activity)
+            if activity_start is None or not activity_id:
                 continue
-            activity_start = datetime.strptime(
-                f"{garmin_row.date} {start_time_raw}", "%Y-%m-%d %H:%M"
-            ).replace(tzinfo=TZ)
             delta = abs(activity_start - workout_start)
             if delta <= _RECONCILE_WINDOW and (best_delta is None or delta < best_delta):
                 best_id = activity_id
