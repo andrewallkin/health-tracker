@@ -14,6 +14,7 @@ from alembic.script import ScriptDirectory
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 HEAVY_HEAD = "011_hevy_integration"
+HEAD = "012_openrouter_models"
 
 
 def _script() -> ScriptDirectory:
@@ -40,7 +41,7 @@ def test_every_down_revision_resolves() -> None:
 def test_chain_is_linear_from_base_to_single_head() -> None:
     script = _script()
     heads = script.get_heads()
-    assert heads == [HEAVY_HEAD], f"expected single head {HEAVY_HEAD!r}, got {heads!r}"
+    assert heads == [HEAD], f"expected single head {HEAD!r}, got {heads!r}"
     assert script.get_base() == "001_initial_schema"
 
     chain = []
@@ -54,12 +55,19 @@ def test_chain_is_linear_from_base_to_single_head() -> None:
         current = script.get_revision(down) if down is not None else None
 
     all_revisions = {rev.revision for rev in script.walk_revisions()}
-    assert chain[0] == HEAVY_HEAD
+    assert chain[0] == HEAD
     assert chain[-1] == "001_initial_schema"
     assert len(chain) == len(all_revisions), (
         f"chain visits {len(chain)} revisions but script directory has {len(all_revisions)}"
     )
     assert set(chain) == all_revisions
+
+
+def test_openrouter_migration_builds_on_hevy() -> None:
+    script = _script()
+    rev = script.get_revision(HEAD)
+    assert rev is not None
+    assert rev.down_revision == HEAVY_HEAD
 
 
 def test_hevy_migration_builds_on_garmin_metric_snapshots() -> None:

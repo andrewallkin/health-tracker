@@ -177,8 +177,8 @@ class AiSettings(BaseModel):
 class AiSettingsUpdate(BaseModel):
     apiKey: str | None = None
     clearApiKey: bool = False
-    textModel: str
-    imageModel: str
+    textModel: str = Field(min_length=1, max_length=128)
+    imageModel: str = Field(min_length=1, max_length=128)
 
 
 class GarminSettings(BaseModel):
@@ -196,6 +196,7 @@ class ModelOption(BaseModel):
     label: str
     supportsVision: bool
     recommendedFor: Literal["text", "image"] | None = None
+    recommended: bool = False
 
 
 class ModelsResponse(BaseModel):

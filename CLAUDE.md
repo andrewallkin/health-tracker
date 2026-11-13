@@ -80,7 +80,7 @@ Dev URLs: **http://localhost:3000** (Docker frontend) or **http://localhost:5173
 - SQLAlchemy rows in `backend/db_models.py` — DB columns use **snake_case**
 - `backend/api/mappers.py` converts rows ↔ schemas; reuse mappers instead of inline dicts
 - `backend/api/ownership.py` — always scope queries by `user_id`
-- `backend/api/deps.py` — `get_current_user`, `get_macros_estimator` (requires encrypted OpenAI key)
+- `backend/api/deps.py` — `get_current_user`, `get_macros_estimator` (requires encrypted OpenRouter key)
 - Auth: JWT access tokens + httpOnly refresh cookies; per-user data isolation
 - AI estimation: `backend/food_classifier.py` (`MacrosEstimator`), exposed at `POST /api/estimate`
 - Photos: local disk in dev (`data/meal-photos/`, gitignored), GCS with signed URLs in prod

@@ -69,8 +69,8 @@ def test_get_or_create_app_settings_handles_concurrent_create(db_session) -> Non
     user = _create_user(db_session)
     existing = AppSettingsRow(
         user_id=user.id,
-        text_model="gpt-5-nano",
-        image_model="gpt-5-mini",
+        text_model="google/gemini-2.5-flash",
+        image_model="google/gemini-2.5-flash",
     )
     db_session.add(existing)
     db_session.commit()
@@ -92,8 +92,8 @@ def test_get_or_create_daily_goal_defaults(db_session) -> None:
 def test_get_or_create_app_settings_defaults(db_session) -> None:
     user = _create_user(db_session)
     row = get_or_create_app_settings(db_session, user.id)
-    assert row.text_model == "gpt-5-nano"
-    assert row.image_model == "gpt-5-mini"
+    assert row.text_model == "google/gemini-2.5-flash"
+    assert row.image_model == "google/gemini-2.5-flash"
 
     again = get_or_create_app_settings(db_session, user.id)
     assert again.id == row.id
@@ -173,8 +173,8 @@ def test_app_settings_to_schema_with_encrypted_key(db_session, monkeypatch: pyte
     row = AppSettingsRow(
         user_id=user.id,
         openai_api_key_encrypted=encrypted,
-        text_model="gpt-5-nano",
-        image_model="gpt-5-mini",
+        text_model="google/gemini-2.5-flash",
+        image_model="google/gemini-2.5-flash",
     )
     db_session.add(row)
     db_session.commit()

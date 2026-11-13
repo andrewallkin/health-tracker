@@ -286,8 +286,8 @@ def seed(email: str = "demo@example.com", password: str = "password123") -> None
             AppSettingsRow(
                 user_id=user.id,
                 openai_api_key_encrypted=None,
-                text_model="gpt-5-nano",
-                image_model="gpt-5-mini",
+                text_model="google/gemini-2.5-flash",
+                image_model="google/gemini-2.5-flash",
             )
         )
 

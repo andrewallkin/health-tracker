@@ -70,6 +70,7 @@ export interface ModelOption {
   label: string;
   supportsVision: boolean;
   recommendedFor?: "text" | "image" | null;
+  recommended?: boolean;
 }
 
 export interface LogEntryCreate {

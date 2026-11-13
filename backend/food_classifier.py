@@ -23,6 +23,7 @@ from .food_models import (
     normalize_food_estimate,
     select_food_model,
 )
+from .openrouter_models import DEFAULT_FOOD_MODEL, OPENROUTER_BASE_URL
 
 load_dotenv()
 
@@ -59,7 +60,7 @@ MULTI_PHOTO_HINT = (
 
 
 class EstimateAPIError(Exception):
-    """Raised when the OpenAI API call for food estimation fails."""
+    """Raised when the OpenRouter API call for food estimation fails."""
 
 
 class MacrosEstimator:
@@ -79,25 +80,27 @@ class MacrosEstimator:
         if load_env:
             load_dotenv()
 
-        resolved_key = (api_key or os.environ.get("OPENAI_API_KEY") or "").strip() or None
+        resolved_key = (api_key or os.environ.get("OPENROUTER_API_KEY") or "").strip() or None
         if client is None:
             if not resolved_key:
                 raise ValueError(
-                    "OpenAI API key is not set. Pass api_key=, client=, or set OPENAI_API_KEY."
+                    "OpenRouter API key is not set. Pass api_key=, client=, or set OPENROUTER_API_KEY."
                 )
-            client = OpenAI(api_key=resolved_key, max_retries=max_retries)
+            client = OpenAI(
+                api_key=resolved_key,
+                base_url=OPENROUTER_BASE_URL,
+                max_retries=max_retries,
+            )
         self.client = client
 
-        legacy_model = (os.environ.get("OPENAI_FOOD_MODEL") or "").strip() or None
         self.text_model = (
-            (text_model or os.environ.get("OPENAI_FOOD_TEXT_MODEL") or "gpt-5-nano").strip()
+            (text_model or os.environ.get("OPENROUTER_FOOD_TEXT_MODEL") or DEFAULT_FOOD_MODEL).strip()
         )
         self.image_model = (
             (
                 image_model
-                or os.environ.get("OPENAI_FOOD_IMAGE_MODEL")
-                or legacy_model
-                or "gpt-5-mini"
+                or os.environ.get("OPENROUTER_FOOD_IMAGE_MODEL")
+                or DEFAULT_FOOD_MODEL
             ).strip()
         )
         self.kj_to_kcal_factor = kj_to_kcal_factor
@@ -197,7 +200,7 @@ class MacrosEstimator:
             user_content.append({"type": "text", "text": "\n".join(user_text_parts)})
         user_content.extend(self._encode_images(photo_inputs))
 
-        logger.info("Calling OpenAI model=%s photos=%d", model, len(photo_inputs))
+        logger.info("Calling OpenRouter model=%s photos=%d", model, len(photo_inputs))
 
         try:
             response = self.client.chat.completions.create(
@@ -214,6 +217,7 @@ class MacrosEstimator:
                         "schema": FOOD_ESTIMATE_SCHEMA,
                     },
                 },
+                extra_body={"provider": {"require_parameters": True}},
             )
         except Exception as exc:
             raise EstimateAPIError(

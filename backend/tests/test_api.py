@@ -517,32 +517,36 @@ def test_ai_settings_and_estimate_without_key(client, auth_headers):
     settings_response = client.get("/api/settings/ai", headers=auth_headers)
     assert settings_response.status_code == 200
     assert settings_response.json()["hasApiKey"] is False
+    assert settings_response.json()["textModel"] == "google/gemini-2.5-flash"
+    assert settings_response.json()["imageModel"] == "google/gemini-2.5-flash"
 
     models_response = client.get("/api/settings/models", headers=auth_headers)
     assert models_response.status_code == 200
-    assert len(models_response.json()["models"]) >= 2
+    model_ids = [model["id"] for model in models_response.json()["models"]]
+    assert "google/gemini-2.5-flash" in model_ids
 
     update_response = client.put(
         "/api/settings/ai",
         headers=auth_headers,
         json={
-            "apiKey": "sk-test-key-1234567890",
-            "textModel": "gpt-5-nano",
-            "imageModel": "gpt-5-mini",
+            "apiKey": "sk-or-v1-test-key-1234567890",
+            "textModel": "google/gemini-2.5-flash",
+            "imageModel": "google/gemini-2.5-pro",
         },
     )
     assert update_response.status_code == 200
     body = update_response.json()
     assert body["hasApiKey"] is True
-    assert body["textModel"] == "gpt-5-nano"
+    assert body["textModel"] == "google/gemini-2.5-flash"
+    assert body["imageModel"] == "google/gemini-2.5-pro"
 
     clear_response = client.put(
         "/api/settings/ai",
         headers=auth_headers,
         json={
             "clearApiKey": True,
-            "textModel": "gpt-5-nano",
-            "imageModel": "gpt-5-mini",
+            "textModel": "google/gemini-2.5-flash",
+            "imageModel": "google/gemini-2.5-pro",
         },
     )
     assert clear_response.status_code == 200
@@ -555,8 +559,8 @@ def test_estimate_rejects_more_than_five_photos(client, auth_headers):
         headers=auth_headers,
         json={
             "apiKey": "sk-test-key-1234567890",
-            "textModel": "gpt-5-nano",
-            "imageModel": "gpt-5-mini",
+            "textModel": "google/gemini-2.5-flash",
+            "imageModel": "google/gemini-2.5-flash",
         },
     )
     photos = [f"/api/photos/user/p{i}.jpg" for i in range(6)]
