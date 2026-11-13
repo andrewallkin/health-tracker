@@ -846,18 +846,29 @@ def build_health_range(db: Session, user_id: str, from_key: str, to_key: str) ->
         .filter(
             GarminDailyHealthRow.user_id == user_id,
             GarminDailyHealthRow.date.in_(past),
-            GarminDailyHealthRow.is_complete.is_(True),
         )
         .all()
         if past
         else []
     )
-    days = {row.date: DailyHealth.model_validate(row.payload) for row in rows}
+    days: dict[str, DailyHealth | None] = {}
+    incomplete: list[str] = []
+    for row in rows:
+        if row.is_complete:
+            days[row.date] = DailyHealth.model_validate(row.payload)
+        else:
+            incomplete.append(row.date)
+    # Uncached past days stay missing so a 90-day range does not burst Garmin.
+    # A day fetched before it finished (is_complete false) is refreshed once,
+    # the same rule /today, /week, and /month already apply through resolve_day.
+    to_fetch = list(incomplete)
     if today in span:
-        # Cache-only for past days: a first-ever 90-day request must not burst
-        # the Garmin API. Only today goes through the live fetch path.
-        _reason, today_days = _health_for_dates(db, user_id, [today])
-        days[today] = today_days.get(today)
+        to_fetch.append(today)
+    if to_fetch:
+        _reason, fetched = _health_for_dates(db, user_id, to_fetch)
+        days.update(fetched)
+        if today in span and today not in days:
+            days[today] = None
     return {
         "from": from_key,
         "to": to_key,

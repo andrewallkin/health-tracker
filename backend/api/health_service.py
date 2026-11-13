@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.api.schemas import DailyHealth, HealthDayError
 from backend.db_models import AppSettingsRow, GarminDailyHealthRow, utcnow
+from backend.hevy_sync import reconcile_stored_activities
 
 
 class GarminNotConnectedError(RuntimeError):
@@ -57,6 +58,7 @@ def _write_day(
         row.fetched_at = utcnow()
         row.is_complete = is_complete
     db.commit()
+    reconcile_stored_activities(db, user_id, date_str)
     return day
 
 
