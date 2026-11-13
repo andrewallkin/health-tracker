@@ -1613,6 +1613,111 @@ def test_health_range_includes_strength_for_days_missing_garmin_rows(
     assert "strength" not in days["2026-08-16"]
 
 
+def test_health_range_refreshes_incomplete_past_days_and_leaves_uncached_days(
+    client, seeded_garmin_days, monkeypatch
+) -> None:
+    fetched_dates: list[str] = []
+
+    def fake_build_fetch_day(_settings_row):
+        def fetch_day(date_str: str) -> dict:
+            fetched_dates.append(date_str)
+            return health_payload(date_str, steps=9000)
+
+        return fetch_day, lambda _db, _row: None
+
+    monkeypatch.setattr(
+        "backend.api.external_service.build_fetch_day", fake_build_fetch_day
+    )
+    db, gen = db_session(client)
+    try:
+        user_id = db.query(UserRow).one().id
+    finally:
+        db.close()
+        close_db(gen)
+    db, gen = db_session(client)
+    try:
+        db.add(
+            GarminDailyHealthRow(
+                user_id=user_id,
+                date="2026-09-04",
+                payload=health_payload("2026-09-04", steps=100),
+                fetched_at=datetime.utcnow(),
+                is_complete=False,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+        close_db(gen)
+
+    resp = client.get("/api/external/health?from=2026-09-04&to=2026-09-05")
+
+    assert resp.status_code == 200, resp.text
+    days = {day["date"]: day for day in resp.json()["days"]}
+    assert fetched_dates == ["2026-09-04"]
+    assert days["2026-09-04"]["status"] == "ready"
+    assert days["2026-09-04"]["steps"] == 9000
+    assert days["2026-09-05"]["reason"] == "missing"
+    db, gen = db_session(client)
+    try:
+        row = (
+            db.query(GarminDailyHealthRow)
+            .filter_by(user_id=user_id, date="2026-09-04")
+            .one()
+        )
+        assert row.is_complete is True
+        assert row.payload["steps"] == 9000
+    finally:
+        db.close()
+        close_db(gen)
+
+
+def test_today_refreshes_incomplete_historical_garmin_day(
+    client, auth_headers, monkeypatch
+) -> None:
+    fetched_dates: list[str] = []
+
+    def fake_build_fetch_day(_settings_row):
+        def fetch_day(date_str: str) -> dict:
+            fetched_dates.append(date_str)
+            return health_payload(date_str, steps=8000)
+
+        return fetch_day, lambda _db, _row: None
+
+    monkeypatch.setattr(
+        "backend.api.external_service.build_fetch_day", fake_build_fetch_day
+    )
+    set_goal(client, auth_headers)
+    connect_garmin(client, auth_headers)
+    api_key = issue_key(client, auth_headers)
+    user_id = client.get("/api/users/me", headers=auth_headers).json()["id"]
+    db, gen = db_session(client)
+    try:
+        db.add(
+            GarminDailyHealthRow(
+                user_id=user_id,
+                date="2026-09-04",
+                payload=health_payload("2026-09-04", steps=100),
+                fetched_at=datetime.utcnow(),
+                is_complete=False,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+        close_db(gen)
+
+    resp = client.get(
+        "/api/external/today",
+        headers=external_headers(api_key),
+        params={"date": "2026-09-04"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert fetched_dates == ["2026-09-04"]
+    assert resp.json()["health"]["steps"] == 8000
+
+
 def test_health_range_today_is_live_fetched_and_uncached_past_days_stay_missing(
     client, seeded_garmin_days, monkeypatch
 ) -> None:

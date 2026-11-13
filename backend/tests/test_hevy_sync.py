@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import create_engine, event
@@ -466,6 +467,99 @@ def test_reconcile_links_keeps_closest_candidate_one_to_one(db_session) -> None:
 
     assert links == ["near-activity"]
     assert len(links) == 1
+
+
+def _full_activity(activity_id: str, name: str, activity_type: str, start_time: str) -> dict:
+    return {
+        "id": activity_id,
+        "name": name,
+        "type": activity_type,
+        "startTime": start_time,
+        "durationMin": 40,
+        "calories": 200,
+        "avgHr": 120,
+    }
+
+
+def test_writing_a_garmin_day_links_the_matching_hevy_workout(db_session) -> None:
+    """A Garmin save links an already-stored Hevy workout within 20 minutes.
+
+    A morning run on the same day stays unmatched, and the closest Hevy start
+    wins when two workouts fall inside the window of one activity.
+    """
+    from backend.api.health_service import resolve_day
+    from backend.tests.test_health_api import health_payload
+
+    user = _create_user(db_session)
+    _seed_workout(
+        db_session,
+        user.id,
+        "lift",
+        start_utc=datetime(2026, 7, 17, 14, 22, tzinfo=UTC),
+        local_date="2026-07-17",
+    )
+    _seed_workout(
+        db_session,
+        user.id,
+        "later-lift",
+        start_utc=datetime(2026, 7, 17, 14, 35, tzinfo=UTC),
+        local_date="2026-07-17",
+    )
+
+    def fetch_day(date_str: str) -> dict:
+        payload = health_payload(date_str, steps=5000)
+        payload["activities"] = [
+            _full_activity("run-1", "Morning run", "running", "09:00"),
+            _full_activity("lift-1", "Strength", "strength_training", "16:22"),
+        ]
+        return payload
+
+    day, errors = resolve_day(
+        db_session,
+        user.id,
+        "2026-07-17",
+        TZ_NAME,
+        fetch_day=fetch_day,
+        now=datetime(2026, 7, 18, 15, 0, tzinfo=ZoneInfo(TZ_NAME)),
+    )
+
+    assert errors == []
+    assert day is not None
+    assert db_session.get(HevyWorkoutRow, "lift").garmin_activity_ids == ["lift-1"]
+    assert db_session.get(HevyWorkoutRow, "later-lift").garmin_activity_ids == []
+
+
+def test_writing_a_garmin_day_does_not_overwrite_an_existing_hevy_link(db_session) -> None:
+    from backend.api.health_service import resolve_day
+    from backend.tests.test_health_api import health_payload
+
+    user = _create_user(db_session)
+    _seed_workout(
+        db_session,
+        user.id,
+        "lift",
+        start_utc=datetime(2026, 7, 17, 14, 22, tzinfo=UTC),
+        local_date="2026-07-17",
+        garmin_activity_ids=["manual-link"],
+    )
+
+    def fetch_day(date_str: str) -> dict:
+        payload = health_payload(date_str, steps=5000)
+        payload["activities"] = [
+            _full_activity("lift-1", "Strength", "strength_training", "16:22"),
+        ]
+        return payload
+
+    resolve_day(
+        db_session,
+        user.id,
+        "2026-07-17",
+        TZ_NAME,
+        fetch_day=fetch_day,
+        now=datetime(2026, 7, 18, 15, 0, tzinfo=ZoneInfo(TZ_NAME)),
+    )
+
+    assert db_session.get(HevyWorkoutRow, "lift").garmin_activity_ids == ["manual-link"]
 
 
 def test_reconcile_links_never_overwrites_existing_links(db_session) -> None:
