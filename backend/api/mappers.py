@@ -64,7 +64,11 @@ def get_or_create_app_settings(db: Session, user_id: str) -> AppSettingsRow:
     if row is not None:
         return row
 
-    row = AppSettingsRow(user_id=user_id, text_model="gpt-5-nano", image_model="gpt-5-mini")
+    row = AppSettingsRow(
+        user_id=user_id,
+        text_model="google/gemini-2.5-flash",
+        image_model="google/gemini-2.5-flash",
+    )
     db.add(row)
     try:
         db.commit()

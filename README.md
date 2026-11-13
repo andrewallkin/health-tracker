@@ -40,7 +40,7 @@ The authoritative variable list lives in `.env.example`. Key ones:
 | Variable | Required | Notes |
 |----------|----------|-------|
 | `POSTGRES_*` | Yes | Database connection (see `.env.example`) |
-| `ENCRYPTION_KEY` | Yes | Encrypts per-user OpenAI keys and Garmin tokens in the DB |
+| `ENCRYPTION_KEY` | Yes | Encrypts per-user OpenRouter keys and Garmin tokens in the DB |
 | `JWT_SECRET_KEY` | Yes | Auth signing secret (use a strong value in production) |
 | `CORS_ORIGINS` | Dev | Comma-separated frontend origins |
 | `GCP_SERVICE_ACCOUNT_CREDENTIALS` | Prod | Base64 service account JSON for GCS photo storage |
@@ -71,7 +71,7 @@ uv run python scripts/seed_db.py --reset
 
 Then open **http://localhost:3000** and sign in with `demo@example.com` / `password123`, or register at `/register`.
 
-Add your OpenAI API key in the app **Settings** screen (stored encrypted in PostgreSQL).
+Add your OpenRouter API key in the app **Settings** screen (stored encrypted in PostgreSQL).
 
 ### 3. Run locally (without Docker frontend)
 

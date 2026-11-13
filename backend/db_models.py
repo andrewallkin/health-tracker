@@ -247,8 +247,12 @@ class AppSettingsRow(Base):
         nullable=False,
     )
     openai_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    text_model: Mapped[str] = mapped_column(String(64), nullable=False, default="gpt-5-nano")
-    image_model: Mapped[str] = mapped_column(String(64), nullable=False, default="gpt-5-mini")
+    text_model: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="google/gemini-2.5-flash"
+    )
+    image_model: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="google/gemini-2.5-flash"
+    )
     garmin_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     garmin_tokens_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

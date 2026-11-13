@@ -55,7 +55,7 @@ export function AddFoodHubPage({
       <div className="space-y-3">
         {!hasApiKey && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-200">
-            <p>Add an OpenAI API key in Settings to use AI estimates.</p>
+            <p>Add an OpenRouter API key in Settings to use AI estimates.</p>
             <button
               type="button"
               onClick={onOpenSettings}

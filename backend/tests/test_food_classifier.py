@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from backend.food_classifier import MacrosEstimator
 from food_models import (
     FoodEstimateRaw,
     LabelEnergy,
@@ -113,18 +114,29 @@ def test_raw_estimate_missing_calories_raises() -> None:
         )
 
 
+def test_estimator_defaults_to_openrouter_gemini() -> None:
+    estimator = MacrosEstimator(api_key="sk-or-v1-test", load_env=False)
+    assert str(estimator.client.base_url).rstrip("/") == "https://openrouter.ai/api/v1"
+    assert estimator.text_model == "google/gemini-2.5-flash"
+    assert estimator.image_model == "google/gemini-2.5-flash"
+
+
 def test_select_food_model() -> None:
     assert (
         select_food_model(
-            has_photos=False, text_model="gpt-5-nano", image_model="gpt-5-mini"
+            has_photos=False,
+            text_model="google/gemini-2.5-flash-lite",
+            image_model="google/gemini-2.5-flash",
         )
-        == "gpt-5-nano"
+        == "google/gemini-2.5-flash-lite"
     )
     assert (
         select_food_model(
-            has_photos=True, text_model="gpt-5-nano", image_model="gpt-5-mini"
+            has_photos=True,
+            text_model="google/gemini-2.5-flash-lite",
+            image_model="google/gemini-2.5-flash",
         )
-        == "gpt-5-mini"
+        == "google/gemini-2.5-flash"
     )
 
 

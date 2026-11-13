@@ -7,6 +7,7 @@ from ...crypto import encrypt_api_key
 from ...database import get_db
 from ...db_models import AppSettingsRow, UserRow, utcnow
 from ...garmin_auth import GarminAuthError, login_and_dump_tokens
+from ...openrouter_models import list_food_models
 from ..deps import get_current_user
 from ..external_auth import create_external_api_key_material
 from ..mappers import app_settings_to_schema, get_or_create_app_settings
@@ -15,62 +16,11 @@ from ..schemas import (
     AiSettingsUpdate,
     GarminConnectRequest,
     GarminSettings,
-    ModelOption,
     ModelsResponse,
 )
 from ..schemas_external import ExternalApiKeyCreated, ExternalApiKeyStatus
 
 router = APIRouter(prefix="/settings", tags=["settings"])
-
-# Chat Completions models with strict JSON schema (Structured Outputs) support.
-# Vision-capable models are listed for photo estimates; text-only picks omit vision.
-MODEL_OPTIONS: list[ModelOption] = [
-    ModelOption(
-        id="gpt-5-nano",
-        label="GPT-5 Nano",
-        supportsVision=False,
-        recommendedFor="text",
-    ),
-    ModelOption(id="gpt-5.4-nano", label="GPT-5.4 Nano", supportsVision=False),
-    ModelOption(id="gpt-4.1-nano", label="GPT-4.1 Nano", supportsVision=False),
-    ModelOption(id="gpt-4o-mini", label="GPT-4o Mini", supportsVision=False),
-    ModelOption(id="gpt-5.4-mini", label="GPT-5.4 Mini", supportsVision=False),
-    ModelOption(id="gpt-5-mini", label="GPT-5 Mini", supportsVision=False),
-    ModelOption(id="gpt-4.1-mini", label="GPT-4.1 Mini", supportsVision=False),
-    ModelOption(id="gpt-4.1", label="GPT-4.1", supportsVision=False),
-    ModelOption(id="gpt-5.4", label="GPT-5.4", supportsVision=False),
-    ModelOption(id="gpt-5.4-pro", label="GPT-5.4 Pro", supportsVision=False),
-    ModelOption(id="gpt-5.2", label="GPT-5.2", supportsVision=False),
-    ModelOption(id="gpt-5.2-pro", label="GPT-5.2 Pro", supportsVision=False),
-    ModelOption(id="gpt-5.1", label="GPT-5.1", supportsVision=False),
-    ModelOption(id="gpt-5", label="GPT-5", supportsVision=False),
-    ModelOption(id="gpt-5-pro", label="GPT-5 Pro", supportsVision=False),
-    ModelOption(id="gpt-5.5", label="GPT-5.5", supportsVision=False),
-    ModelOption(id="gpt-5.5-pro", label="GPT-5.5 Pro", supportsVision=False),
-    ModelOption(
-        id="gpt-5-mini",
-        label="GPT-5 Mini",
-        supportsVision=True,
-        recommendedFor="image",
-    ),
-    ModelOption(id="gpt-5-nano", label="GPT-5 Nano", supportsVision=True),
-    ModelOption(id="gpt-5.4-nano", label="GPT-5.4 Nano", supportsVision=True),
-    ModelOption(id="gpt-5.4-mini", label="GPT-5.4 Mini", supportsVision=True),
-    ModelOption(id="gpt-4.1-nano", label="GPT-4.1 Nano", supportsVision=True),
-    ModelOption(id="gpt-4o-mini", label="GPT-4o Mini", supportsVision=True),
-    ModelOption(id="gpt-4.1-mini", label="GPT-4.1 Mini", supportsVision=True),
-    ModelOption(id="gpt-4.1", label="GPT-4.1", supportsVision=True),
-    ModelOption(id="gpt-4o", label="GPT-4o", supportsVision=True),
-    ModelOption(id="gpt-5.4", label="GPT-5.4", supportsVision=True),
-    ModelOption(id="gpt-5.4-pro", label="GPT-5.4 Pro", supportsVision=True),
-    ModelOption(id="gpt-5.2", label="GPT-5.2", supportsVision=True),
-    ModelOption(id="gpt-5.2-pro", label="GPT-5.2 Pro", supportsVision=True),
-    ModelOption(id="gpt-5.1", label="GPT-5.1", supportsVision=True),
-    ModelOption(id="gpt-5", label="GPT-5", supportsVision=True),
-    ModelOption(id="gpt-5-pro", label="GPT-5 Pro", supportsVision=True),
-    ModelOption(id="gpt-5.5", label="GPT-5.5", supportsVision=True),
-    ModelOption(id="gpt-5.5-pro", label="GPT-5.5 Pro", supportsVision=True),
-]
 
 
 def garmin_settings_from_row(row: AppSettingsRow) -> GarminSettings:
@@ -83,7 +33,7 @@ def garmin_settings_from_row(row: AppSettingsRow) -> GarminSettings:
 
 @router.get("/models", response_model=ModelsResponse)
 def list_models(_user: UserRow = Depends(get_current_user)) -> ModelsResponse:
-    return ModelsResponse(models=MODEL_OPTIONS)
+    return ModelsResponse(models=list_food_models())
 
 
 @router.get("/ai", response_model=AiSettings)

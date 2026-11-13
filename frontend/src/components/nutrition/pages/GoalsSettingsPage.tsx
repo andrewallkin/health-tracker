@@ -47,8 +47,8 @@ export function GoalsSettingsPage({
   const [goalFields, setGoalFields] = useState<DailyGoalFieldValues>(() =>
     fieldValuesFromDailyGoal(initialGoal),
   );
-  const [textModel, setTextModel] = useState("gpt-5-nano");
-  const [imageModel, setImageModel] = useState("gpt-5-mini");
+  const [textModel, setTextModel] = useState(DEFAULT_FOOD_MODEL);
+  const [imageModel, setImageModel] = useState(DEFAULT_FOOD_MODEL);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,8 +128,8 @@ export function GoalsSettingsPage({
     }
   };
 
-  const textModels = modelOptions.filter((m) => !m.supportsVision);
-  const imageModels = modelOptions.filter((m) => m.supportsVision);
+  const visionModels = modelOptions.filter((model) => model.supportsVision);
+  const selectableModels = visionModels.length > 0 ? visionModels : modelOptions;
 
   const openKeyInput = () => {
     setKeyInput("");
@@ -507,7 +507,9 @@ export function GoalsSettingsPage({
             <section className="rounded-2xl border border-white/10 bg-white/4 p-4">
               <h2 className="mb-1 text-sm font-medium text-zinc-300">AI estimation</h2>
               <p className="mb-4 text-xs leading-relaxed text-zinc-500">
-                Your OpenAI key is stored encrypted on the server and used for AI food estimates.
+                Your OpenRouter key is stored encrypted on the server and used for AI food
+                estimates. Gemini 2.5 Flash is the default for both text and photos. If you
+                previously saved an OpenAI key, replace it here.
               </p>
 
               <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-3">
@@ -565,41 +567,36 @@ export function GoalsSettingsPage({
 
               <div className="mt-4 grid grid-cols-1 gap-3">
                 <Field label="Text model">
-                  <select
+                  <ModelSelect
                     value={textModel}
-                    onChange={(e) => setTextModel(e.target.value)}
-                    className={modelSelectClass}
-                  >
-                    {(textModels.length > 0 ? textModels : modelOptions).map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {formatModelLabel(model, "text")}
-                      </option>
-                    ))}
-                  </select>
+                    models={selectableModels}
+                    onChange={setTextModel}
+                  />
                 </Field>
                 <Field label="Image model">
-                  <select
+                  <ModelSelect
                     value={imageModel}
-                    onChange={(e) => setImageModel(e.target.value)}
-                    className={modelSelectClass}
-                  >
-                    {(imageModels.length > 0 ? imageModels : modelOptions).map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {formatModelLabel(model, "image")}
-                      </option>
-                    ))}
-                  </select>
+                    models={selectableModels}
+                    onChange={setImageModel}
+                  />
                 </Field>
               </div>
+              <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+                Both lists are OpenRouter models that accept images and return structured JSON.
+              </p>
             </section>
           </>
         )}
       </div>
 
       {keyDialog === "input" && (
-        <Modal title={hasApiKey ? "Update API key" : "Add API key"} onClose={closeKeyDialog}>
+        <Modal
+          title={hasApiKey ? "Update OpenRouter key" : "Add OpenRouter key"}
+          onClose={closeKeyDialog}
+        >
           <p className="mb-4 text-xs leading-relaxed text-zinc-500">
-            Your key is encrypted before storage and never shown again after saving.
+            Paste a key from openrouter.ai. It is encrypted before storage and never shown
+            again after saving.
           </p>
           {keyError && (
             <p className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
@@ -612,7 +609,7 @@ export function GoalsSettingsPage({
             autoFocus
             value={keyInput}
             onChange={(e) => setKeyInput(e.target.value)}
-            placeholder="sk-…"
+            placeholder="sk-or-v1-…"
             className={inputClass}
             onKeyDown={(e) => {
               if (e.key === "Enter") void handleSaveKey();
@@ -744,6 +741,56 @@ const inputClass =
 const modelSelectClass =
   "w-full rounded-xl border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-zinc-100 outline-none focus:border-white/20 focus:bg-white/8";
 
+const DEFAULT_FOOD_MODEL = "google/gemini-2.5-flash";
+
+function ModelSelect({
+  value,
+  models,
+  onChange,
+}: {
+  value: string;
+  models: ModelOption[];
+  onChange: (modelId: string) => void;
+}) {
+  const options =
+    value && !models.some((model) => model.id === value)
+      ? [{ id: value, label: `${value} (saved)`, supportsVision: true }, ...models]
+      : models;
+  const recommended = options.filter((model) => model.recommended);
+  const grouped = new Map<string, ModelOption[]>();
+  for (const model of options) {
+    if (model.recommended) continue;
+    const provider = model.id.includes("/") ? model.id.split("/")[0] : "saved";
+    const group = grouped.get(provider) ?? [];
+    group.push(model);
+    grouped.set(provider, group);
+  }
+  const providers = [...grouped.keys()].sort((a, b) => a.localeCompare(b));
+
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className={modelSelectClass}
+    >
+      {recommended.map((model) => (
+        <option key={model.id} value={model.id}>
+          {formatModelLabel(model)}
+        </option>
+      ))}
+      {providers.map((provider) => (
+        <optgroup key={provider} label={provider}>
+          {(grouped.get(provider) ?? []).map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.label}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
@@ -753,8 +800,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function formatModelLabel(model: ModelOption, role: "text" | "image"): string {
-  if (model.recommendedFor === role) {
+function formatModelLabel(model: ModelOption): string {
+  if (model.recommended || model.recommendedFor) {
     return `${model.label} (recommended)`;
   }
   return model.label;
