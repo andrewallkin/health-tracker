@@ -220,3 +220,6 @@ docs/superpowers/
 
 # Git worktrees
 .worktrees/
+
+# Playwright for README screenshot capture
+/node_modules/
