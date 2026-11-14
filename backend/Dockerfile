@@ -14,6 +14,7 @@ RUN uv sync --project backend --frozen --no-dev
 ENV PATH="/app/.venv/bin:$PATH"
 
 COPY backend ./backend
+COPY scripts/seed_db.py ./scripts/seed_db.py
 COPY backend/run_migrations.sh ./run_migrations.sh
 RUN chmod +x run_migrations.sh
 
