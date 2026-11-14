@@ -50,14 +50,17 @@ async function main() {
 
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-    deviceScaleFactor: 1,
+    viewport: { width: 480, height: 1280 },
+    deviceScaleFactor: 2,
   });
   const page = await context.newPage();
 
   try {
     await login(page);
-    await shot(page, `${BASE_URL}/food/day/${date}`, "hero.png");
+    await page.goto(`${BASE_URL}/food/day/${date}`, { waitUntil: "networkidle" });
+    await page.getByText("Today's meals").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(OUT_DIR, "hero.png"), fullPage: false });
     await shot(page, `${BASE_URL}/check-in/day/${date}`, "feature-01.png");
     await shot(page, `${BASE_URL}/food/week/${date}`, "feature-02.png");
     console.log(`Wrote screenshots to ${OUT_DIR}`);
