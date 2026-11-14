@@ -1,3 +1,4 @@
+# Day-to-day local development with hot reload and a bundled Postgres.
 services:
   postgres:
     image: postgres:15

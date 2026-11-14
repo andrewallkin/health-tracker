@@ -19,6 +19,7 @@ from backend.database import Base, SessionLocal, engine  # noqa: E402
 from backend.api.mappers import DEFAULT_DAILY_GOAL  # noqa: E402
 from backend.db_models import (  # noqa: E402
     AppSettingsRow,
+    CheckInRow,
     DailyGoalRow,
     LogEntryRow,
     SavedFoodRow,
@@ -233,6 +234,7 @@ HISTORICAL_PATTERNS = [
 
 def clear_user_seed_data(db: Session, user_id: str) -> None:
     """Remove existing nutrition rows for a user before re-seeding."""
+    db.query(CheckInRow).filter(CheckInRow.user_id == user_id).delete(synchronize_session=False)
     db.query(LogEntryRow).filter(LogEntryRow.user_id == user_id).delete(synchronize_session=False)
     db.query(SavedMealRow).filter(SavedMealRow.user_id == user_id).delete(synchronize_session=False)
     db.query(SavedFoodRow).filter(SavedFoodRow.user_id == user_id).delete(synchronize_session=False)
@@ -324,10 +326,29 @@ def seed(email: str = "demo@example.com", password: str = "password123") -> None
                     )
                 )
 
+        start_weight_kg = 84.6
+        for day_offset in range(0, 21):
+            check_in_date = (today - timedelta(days=day_offset)).isoformat()
+            weight_kg = round(start_weight_kg - day_offset * 0.12 + (day_offset % 3) * 0.05, 1)
+            notes = (
+                "Felt strong after morning walk."
+                if day_offset == 0
+                else None
+            )
+            db.add(
+                CheckInRow(
+                    id=str(uuid.uuid4()),
+                    user_id=user.id,
+                    check_in_date=check_in_date,
+                    weight_kg=weight_kg,
+                    notes=notes,
+                )
+            )
+
         db.commit()
         print(
             f"Seeded user {user.email} with daily goal, {len(SAVED_MEALS) + 1} saved meals, "
-            f"{len(SAVED_FOODS)} saved foods, and log entries through {today.isoformat()}"
+            f"{len(SAVED_FOODS)} saved foods, 21 check-ins, and log entries through {today.isoformat()}"
         )
     finally:
         db.close()
