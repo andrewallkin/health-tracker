@@ -40,10 +40,10 @@ Apply migrations inside the backend container:
 docker compose -f docker-compose.standalone.yml exec backend bash /app/run_migrations.sh
 ```
 
-Seed synthetic demo data:
+Optional demo data, from the repo root (the script is not copied into the image):
 
 ```bash
-docker compose -f docker-compose.standalone.yml exec -T backend uv run python scripts/seed_db.py --reset
+uv run python scripts/seed_db.py --reset
 ```
 
 Open **http://localhost:3000**. The API is on **http://127.0.0.1:8000** (loopback only). Put your own reverse proxy and firewall in front of the frontend port before exposing it on a public host.

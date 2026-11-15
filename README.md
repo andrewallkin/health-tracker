@@ -114,7 +114,7 @@ See [`.env.example`](.env.example) for the full variable list. Highlights:
 ## Deployment
 
 - **Local development** — `docker compose -f docker-compose.dev.yml up --build`, then `./backend/run_migrations.sh`.
-- **Standalone** — `docker compose -f docker-compose.standalone.yml up --build`, migrate in the backend container, seed demo data; no control panel required.
+- **Standalone** — `docker compose -f docker-compose.standalone.yml up --build`, then migrate in the backend container. No control panel required.
 - **This VPS** — the control panel runs `docker-compose.yml` in image mode against shared Postgres.
 
 Full steps: [`docs/deployment.md`](docs/deployment.md).
@@ -152,15 +152,7 @@ uv run --project backend pytest
 cd frontend && npm ci && npm test && npm run lint && npx tsc -b
 ```
 
-**Screenshot capture** (after standalone stack is up, migrated, and seeded):
-
-```bash
-npm install
-npx playwright install chromium
-node scripts/capture-screenshots.mjs
-```
-
-Writes `docs/images/hero.png`, `feature-01.png`, and `feature-02.png` at viewport 1440×900. Uses demo credentials **`demo@example.com`** / **`password123`** on a freshly seeded database only.
+The README images under `docs/images/` are fictional examples.
 
 Optional local backend without the Compose frontend:
 
