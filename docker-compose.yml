@@ -1,3 +1,4 @@
+# VPS control panel image-mode deploy (external Postgres network).
 services:
   backend:
     image: andrewallkin/health-tracker:${DOCKER_IMAGE_BACKEND}
