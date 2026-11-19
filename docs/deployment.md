@@ -25,7 +25,7 @@ Sign in with `demo@example.com` / `password123`.
 
 ## Standalone
 
-Self-contained stack with bundled Postgres—no control panel, shared Docker network, or external TLS termination required.
+Self-contained stack with bundled Postgres, backend, MCP, and frontend—no control panel, shared Docker network, or external TLS termination required.
 
 ```bash
 cp .env.example .env

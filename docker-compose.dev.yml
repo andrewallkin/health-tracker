@@ -34,6 +34,25 @@ services:
     command: uv run --project backend uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
     networks: [default, postgres-net]
 
+  mcp:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["uv", "run", "--project", "backend", "python", "-m", "backend.mcp.server"]
+    environment:
+      POSTGRES_HOST: postgres
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:${MCP_PORT:-8004}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    networks: [default, postgres-net]
+
   frontend:
     build:
       context: ./frontend
