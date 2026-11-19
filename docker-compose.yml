@@ -20,6 +20,21 @@ services:
       - postgres-net
     restart: always
 
+  mcp:
+    image: andrewallkin/health-tracker:${DOCKER_IMAGE_MCP}
+    command: ["uv", "run", "--project", "backend", "python", "-m", "backend.mcp.server"]
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:${MCP_PORT:-8004}:8000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: always
+    networks:
+      - default
+      - postgres-net
+
   frontend:
     image: andrewallkin/health-tracker:${DOCKER_IMAGE_FRONTEND}
     ports:

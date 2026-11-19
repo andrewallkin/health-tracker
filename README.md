@@ -47,7 +47,7 @@ flowchart TB
   BE --> SHARED
 ```
 
-**Standalone path** — `docker-compose.standalone.yml` runs Postgres, backend, and frontend on one machine. The frontend is published on all interfaces; the API binds to loopback for local docs and debugging.
+**Standalone path** — `docker-compose.standalone.yml` runs Postgres, backend, MCP, and frontend on one machine. The frontend is published on all interfaces; the API binds to loopback for local docs and debugging.
 
 **Control panel path** — `docker-compose.yml` is the production contract: prebuilt images, no bundled Postgres, join external `postgres-net`, and bind host ports to `127.0.0.1` only. The [VPS control panel](https://github.com/andrewallkin/vps-control-panel) supplies production `POSTGRES_*`, image tags, TLS, and health checks. This repository does not contain nginx or host TLS configuration.
 

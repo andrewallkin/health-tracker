@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     hevy_api_key: str = ""
     hevy_webhook_token: str = ""
 
+    mcp_public_base_url: str = Field(
+        default="https://healthtracker.andrewallkin.com",
+        validation_alias=AliasChoices("MCP_PUBLIC_BASE_URL"),
+    )
+
     @field_validator("cors_origins", mode="plain")
     @classmethod
     def _split_origins(cls, value: Any) -> Any:
@@ -71,6 +76,11 @@ class Settings(BaseSettings):
     @classmethod
     def _floor_concurrency(cls, value: int) -> int:
         return value if value > 0 else 3
+
+    @property
+    def mcp_oauth_base_url(self) -> str:
+        """Public origin of the MCP process, with no trailing slash."""
+        return self.mcp_public_base_url.strip().rstrip("/")
 
     @property
     def database_url(self) -> str:

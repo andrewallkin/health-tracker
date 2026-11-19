@@ -10,6 +10,7 @@ from ...auth import create_token, decode_token, get_password_hash, verify_passwo
 from ...config import get_settings
 from ...database import get_db
 from ...db_models import RefreshTokenRow, UserRow
+HEALTH_AUTH_COOKIE = "health_auth"
 from ..deps import get_current_user
 from ..schemas_auth import AuthResponse, LoginRequest, RegisterRequest, TokenResponse, UserOut
 
@@ -33,6 +34,22 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
     )
 
 
+def _set_health_auth_cookie(response: Response, access_token: str) -> None:
+    response.set_cookie(
+        key=HEALTH_AUTH_COOKIE,
+        value=access_token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+        max_age=settings.jwt_access_token_expire_minutes * 60,
+    )
+
+
+def _clear_health_auth_cookie(response: Response) -> None:
+    response.delete_cookie(HEALTH_AUTH_COOKIE, path="/")
+
+
 def _issue_tokens(db: Session, user: UserRow, response: Response) -> AuthResponse:
     access_token, _ = create_token(
         user.id,
@@ -52,6 +69,7 @@ def _issue_tokens(db: Session, user: UserRow, response: Response) -> AuthRespons
     )
     db.commit()
     _set_refresh_cookie(response, refresh_token)
+    _set_health_auth_cookie(response, access_token)
     return AuthResponse(access_token=access_token, user=_user_out(user))
 
 
@@ -153,6 +171,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     )
     db.commit()
     _set_refresh_cookie(response, new_refresh)
+    _set_health_auth_cookie(response, new_access)
     return TokenResponse(access_token=new_access)
 
 
@@ -167,4 +186,5 @@ def logout(
         row.is_revoked = True
     db.commit()
     response.delete_cookie("refresh_token", path="/api/auth")
+    _clear_health_auth_cookie(response)
     return Response(status_code=204)

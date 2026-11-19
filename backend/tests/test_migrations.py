@@ -14,7 +14,7 @@ from alembic.script import ScriptDirectory
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 HEAVY_HEAD = "011_hevy_integration"
-HEAD = "012_openrouter_models"
+HEAD = "013_mcp_oauth"
 
 
 def _script() -> ScriptDirectory:
@@ -63,9 +63,16 @@ def test_chain_is_linear_from_base_to_single_head() -> None:
     assert set(chain) == all_revisions
 
 
-def test_openrouter_migration_builds_on_hevy() -> None:
+def test_mcp_oauth_migration_builds_on_openrouter_models() -> None:
     script = _script()
     rev = script.get_revision(HEAD)
+    assert rev is not None
+    assert rev.down_revision == "012_openrouter_models"
+
+
+def test_openrouter_migration_builds_on_hevy() -> None:
+    script = _script()
+    rev = script.get_revision("012_openrouter_models")
     assert rev is not None
     assert rev.down_revision == HEAVY_HEAD
 
